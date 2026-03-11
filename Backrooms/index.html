@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - 4x4 Tiling Edition</title>
+    <title>Backrooms - Infinite 4x4 Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
@@ -29,18 +29,18 @@
         // 1. Assets
         const wallImg = new Image(); wallImg.src = 'walls.png';
 
-        // 2. Map (1 = Wall, 0 = Space)
-        const map = [
-            [1,1,1,1,1,1,1,1],
-            [1,0,0,0,0,0,0,1],
-            [1,0,1,0,1,1,0,1],
-            [1,0,0,0,0,0,0,1],
-            [1,1,1,0,1,1,1,1],
-            [1,0,0,0,0,0,0,1],
-            [1,1,1,1,1,1,1,1]
-        ];
+        // 2. Infinite Chunk Logic (Matching your 0.85 seed logic)
+        function getCellType(x, y) {
+            // Spawn Safety: Keep a 3x3 area clear at the start
+            if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
+            
+            // Pseudo-random noise based on coordinates
+            const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+            const rand = n - Math.floor(n);
+            return rand > 0.85 ? 1 : 0; // 15% wall density
+        }
         
-        let p = { x: 2.5, y: 2.5, dir: 0 };
+        let p = { x: 0.5, y: 0.5, dir: 0 };
         const keys = {};
 
         function start() {
@@ -51,8 +51,9 @@
 
         function loop() {
             // Movement Logic
-            if(keys['w']) { p.x += Math.cos(p.dir)*0.05; p.y += Math.sin(p.dir)*0.05; }
-            if(keys['s']) { p.x -= Math.cos(p.dir)*0.05; p.y -= Math.sin(p.dir)*0.05; }
+            const speed = 0.05;
+            if(keys['w']) { p.x += Math.cos(p.dir)*speed; p.y += Math.sin(p.dir)*speed; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*speed; p.y -= Math.sin(p.dir)*speed; }
             if(keys['a']) p.dir -= 0.04;
             if(keys['d']) p.dir += 0.04;
 
@@ -63,18 +64,20 @@
             ctx.fillStyle = "#1e210d"; ctx.fillRect(0, 0, 600, 200); 
             ctx.fillStyle = "#333333"; ctx.fillRect(0, 200, 600, 200); 
 
-            // 3. RAYCASTING ENGINE
+            // 3. INFINITE RAYCASTING ENGINE
             const numRays = 600;
             for(let i=0; i < numRays; i++) {
                 let rayAngle = p.dir - 0.5 + (i / numRays);
                 let rx = p.x, ry = p.y;
-                let vx = Math.cos(rayAngle) * 0.01;
-                let vy = Math.sin(rayAngle) * 0.01;
+                let vx = Math.cos(rayAngle) * 0.02;
+                let vy = Math.sin(rayAngle) * 0.02;
                 let dist = 0;
                 
+                // March rays into the "Infinite" noise map
                 while(dist < 15) {
-                    rx += vx; ry += vy; dist += 0.01;
-                    if(map[Math.floor(ry)]?.[Math.floor(rx)] === 1) break;
+                    rx += vx; ry += vy; dist += 0.02;
+                    // Check noise map instead of static array
+                    if(getCellType(Math.floor(rx), Math.floor(ry)) === 1) break;
                 }
                 
                 let correctedDist = dist * Math.cos(rayAngle - p.dir);
@@ -83,24 +86,22 @@
 
                 // --- 4x4 TILING LOGIC ---
                 if (wallImg.complete) {
-                    // Horizontal Repeat: (rx + ry) % 1 gives decimal (0.0 to 1.0)
-                    // Multiplying by 4 makes it loop 4 times horizontally
                     let texX = ((rx + ry) * 4 % 1) * wallImg.width;
-                    
-                    let tilesV = 4; // Vertical Repeat
+                    let tilesV = 4; 
                     let segmentH = h / tilesV;
 
                     for (let t = 0; t < tilesV; t++) {
                         ctx.drawImage(
                             wallImg, 
                             texX, 0, 1, wallImg.height, 
-                            i, wallY + (t * segmentH), 1, segmentH + 0.5 // +0.5 prevents tiny gaps
+                            i, wallY + (t * segmentH), 1, segmentH + 0.5
                         );
                     }
                 }
                 
-                // Depth Fog
-                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(dist / 10, 0.95)})`;
+                // Depth Fog (Atmosphere)
+                let fog = Math.min(dist / 12, 0.98);
+                ctx.fillStyle = `rgba(18, 21, 5, ${fog})`;
                 ctx.fillRect(i, wallY, 1, h);
             }
             requestAnimationFrame(loop);

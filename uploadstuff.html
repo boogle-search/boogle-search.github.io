@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 15px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; width: 340px; }
+        h3 { color: #333; margin: 0 0 15px 0; font-size: 1.1rem; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
+        .file-group { margin-bottom: 8px; }
+        label { font-size: 0.75rem; color: #666; display: block; margin-bottom: 2px; font-weight: bold; }
+        input[type="file"] { font-size: 0.7rem; width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 4px; background: #fafafa; }
+        .btn-close { background: #ff4c4c; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; width: 100%; margin-top: 15px; }
+        .btn-close:hover { background: #e03b3b; transform: translateY(-1px); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h3>OpenBlox 2.2 Avatar Editor</h3>
+        <div class="grid">
+            <div class="file-group"><label>Head</label><input type="file" onchange="send('HEAD', this)"></div>
+            <div class="file-group"><label>Body</label><input type="file" onchange="send('BODY', this)"></div>
+            <div class="file-group"><label>Arms</label><input type="file" onchange="send('ARMS', this)"></div>
+            <div class="file-group"><label>Legs</label><input type="file" onchange="send('LEGS', this)"></div>
+            <div class="file-group"><label>Hands</label><input type="file" onchange="send('HANDS', this)"></div>
+            <div class="file-group"><label>Tool (Opt)</label><input type="file" onchange="send('TOOL', this)"></div>
+        </div>
+        <button class="btn-close" onclick="closeNow()">Close & Save</button>
+    </div>
+
+    <script>
+        function send(part, input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                // Sends message like "HEAD:data:image/png;base64..."
+                window.parent.postMessage(part + ":" + reader.result, "*");
+            };
+            reader.readAsDataURL(file);
+        }
+        function closeNow() { window.parent.postMessage("Close", "*"); }
+    </script>
+</body>
+</html>

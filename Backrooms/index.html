@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Reality Restored</title>
+    <title>Backrooms - Solid Reality</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.95); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
     </style>
 </head>
 <body>
@@ -39,20 +39,49 @@
             if(keys['a']) p.dir -= 0.05;
             if(keys['d']) p.dir += 0.05;
 
-            // Internal Resolution - FIXED TO MATCH MATH
-            const vW = 400; const vH = 300;
+            // Internal Resolution MUST match the height math
+            const vW = 300; const vH = 200;
             canvas.width = vW; canvas.height = vH;
+            const buffer = ctx.createImageData(vW, vH);
 
-            // 1. Draw Background (Solid Seam)
-            ctx.fillStyle = "#888844"; ctx.fillRect(0, 0, vW, vH/2); // Ceiling
-            ctx.fillStyle = "#444444"; ctx.fillRect(0, vH/2, vW, vH/2); // Floor
+            // 1. SYNCED FLOOR & CEILING (Fixes the "Exploded" world)
+            for(let y = 0; y < vH; y++) {
+                let isFloor = y > vH / 2;
+                let p_dist = Math.abs((vH / 2) / (y - (vH / 2)));
 
-            // 2. DDA Raycasting (Locked to Seam)
-            for(let x = 0; x < vW; x++) {
+                for(let x = 0; x < vW; x++) {
+                    let cameraX = 2 * x / vW - 1;
+                    let rDX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
+                    let rDY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
+
+                    let wX = p.x + p_dist * rDX;
+                    let wY = p.y + p_dist * rDY;
+
+                    // Light spacing: 2x2 grid
+                    let tX = Math.floor(wX), tY = Math.floor(wY);
+                    let rX = wX % 1, rY = wY % 1;
+                    let isL = (!isFloor && tX % 2 === 0 && tY % 2 === 0 && rX > 0.3 && rX < 0.7 && rY > 0.3 && rY < 0.7);
+
+                    let i = (y * vW + x) * 4;
+                    if (isL) {
+                        buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 200;
+                    } else {
+                        let fog = Math.min(p_dist / 10, 1);
+                        let r = isFloor ? 80 : 140, g = isFloor ? 75 : 135, b = isFloor ? 50 : 80;
+                        buffer.data[i] = r * (1 - fog) + 18 * fog;
+                        buffer.data[i+1] = g * (1 - fog) + 21 * fog;
+                        buffer.data[i+2] = b * (1 - fog) + 5 * fog;
+                    }
+                    buffer.data[i+3] = 255;
+                }
+            }
+            ctx.putImageData(buffer, 0, 0);
+
+            // 2. WALLS (Glued to the ground)
+            for(let x=0; x < vW; x++) {
                 let cameraX = 2 * x / vW - 1;
                 let rDX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
                 let rDY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
-
                 let mX = Math.floor(p.x), mY = Math.floor(p.y);
                 let dX = Math.abs(1/rDX), dY = Math.abs(1/rDY);
                 let stX, stY, sX, sY;
@@ -67,33 +96,23 @@
                 }
 
                 let pD = (side===0)?(sX-dX):(sY-dY);
-                let h = Math.floor(vH / pD); // This height math now matches the vH/2 background
+                let h = Math.floor(vH / pD);
                 let wallY = (vH - h) / 2;
 
                 if(wallImg.complete){
                     let hitP = (side===0)?p.y+pD*rDY:p.x+pD*rDX;
                     let texX = Math.floor((hitP * 4 % 1) * wallImg.width);
                     
-                    // Force wall to be solid black behind the texture
+                    // Draw Solid behind texture to stop "ghosting"
                     ctx.fillStyle = "#000"; ctx.fillRect(x, wallY, 1, h);
                     
                     for(let t=0; t<4; t++) {
                         ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY+(t*h/4), 1, h/4+1);
                     }
                 }
-                
-                // Fog applied as a solid overlay to prevent gaps
-                let fog = Math.min(pD / 12, 0.98);
-                ctx.globalAlpha = fog; ctx.fillStyle = "#121505";
-                ctx.fillRect(x, wallY, 1, h); ctx.globalAlpha = 1.0;
+                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pD/10, 0.98)})`;
+                ctx.fillRect(x, wallY, 1, h);
             }
-
-            // Ceiling Lights - Fixed height for reality
-            for(let lx = 0; lx < vW; lx += 100) {
-                ctx.fillStyle = "rgba(255, 255, 230, 0.5)";
-                ctx.fillRect(lx + 40, 50, 20, 10);
-            }
-
             requestAnimationFrame(loop);
         }
     </script>

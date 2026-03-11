@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Full Texture Fix</title>
+    <title>Backrooms - Final Remake</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.95); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
     </style>
 </head>
 <body>
@@ -16,15 +16,9 @@
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
-        
-        // 1. ASSET LOADING
         const wallImg = new Image(); wallImg.src = 'walls.png';
         const floorImg = new Image(); floorImg.src = 'floor.png';
         const ceilImg = new Image(); ceilImg.src = 'celing.png';
-
-        // Hidden canvases to "read" image data
-        const fCan = document.createElement('canvas'), fCtx = fCan.getContext('2d');
-        const cCan = document.createElement('canvas'), cCtx = cCan.getContext('2d');
 
         function getCellType(x, y) {
             if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
@@ -36,18 +30,12 @@
         const keys = {};
 
         function start() {
-            // Prepare hidden canvases once images load
-            fCan.width = fCan.height = 64; fCtx.drawImage(floorImg, 0, 0, 64, 64);
-            cCan.width = cCan.height = 64; cCtx.drawImage(ceilImg, 0, 0, 64, 64);
-            const fData = fCtx.getImageData(0, 0, 64, 64).data;
-            const cData = cCtx.getImageData(0, 0, 64, 64).data;
-
             window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
             window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-            loop(fData, cData);
+            loop();
         }
 
-        function loop(fData, cData) {
+        function loop() {
             if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
             if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
             if(keys['a']) p.dir -= 0.05;
@@ -56,38 +44,35 @@
             canvas.width = 300; canvas.height = 200;
             const buffer = ctx.createImageData(300, 200);
 
-            // --- 2. TEXTURED FLOOR & CEILING ---
+            // --- 1. TRUE FLOOR & CEILING CASTING ---
             for(let y = 0; y < 200; y++) {
                 let isFloor = y > 100;
                 let p_dist = Math.abs(100 / (y - 100));
 
                 for(let x = 0; x < 300; x++) {
                     let cameraX = 2 * x / 300 - 1;
-                    let rayDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
-                    let rayDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
+                    let rDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
+                    let rDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
 
-                    let worldX = p.x + p_dist * rayDirX;
-                    let worldY = p.y + p_dist * rayDirY;
+                    let worldX = p.x + p_dist * rDirX;
+                    let worldY = p.y + p_dist * rDirY;
 
-                    // Smaller Ceiling Lights Logic
+                    // Lights: Small center of every 2nd tile
                     let tx_g = Math.floor(worldX), ty_g = Math.floor(worldY);
                     let rx = worldX % 1, ry = worldY % 1;
-                    let isLight = (!isFloor && tx_g % 2 === 0 && ty_g % 2 === 0 && rx > 0.35 && rx < 0.65 && ry > 0.35 && ry < 0.65);
+                    let isL = (!isFloor && tx_g % 2 === 0 && ty_g % 2 === 0 && rx > 0.35 && rx < 0.65 && ry > 0.35 && ry < 0.65);
 
-                    // TILING: 8x for Floor, 1x for Ceiling
+                    // 1/8th Tiling for Floor
                     let scale = isFloor ? 8 : 1;
                     let tx = Math.floor((worldX * scale % 1) * 64);
                     let ty = Math.floor((worldY * scale % 1) * 64);
-                    let texI = (ty * 64 + tx) * 4;
 
                     let i = (y * 300 + x) * 4;
-                    if (isLight) {
+                    if (isL) {
                         buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 210;
                     } else {
                         let fog = Math.min(p_dist / 12, 1);
-                        let r = isFloor ? fData[texI] : cData[texI];
-                        let g = isFloor ? fData[texI+1] : cData[texI+1];
-                        let b = isFloor ? fData[texI+2] : cData[texI+2];
+                        let r = isFloor ? 80 : 140, g = isFloor ? 75 : 135, b = isFloor ? 50 : 80;
                         buffer.data[i] = r * (1 - fog) + 18 * fog;
                         buffer.data[i+1] = g * (1 - fog) + 21 * fog;
                         buffer.data[i+2] = b * (1 - fog) + 5 * fog;
@@ -97,18 +82,18 @@
             }
             ctx.putImageData(buffer, 0, 0);
 
-            // --- 3. DDA WALLS ---
+            // --- 2. DDA WALLS (4x4 Tiling) ---
             for(let x=0; x < 300; x++) {
                 let cameraX = 2 * x / 300 - 1;
-                let rayDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
-                let rayDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
+                let rDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
+                let rDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
                 let mapX = Math.floor(p.x), mapY = Math.floor(p.y);
-                let dX = Math.abs(1 / rayDirX), dY = Math.abs(1 / rayDirY);
+                let dX = Math.abs(1 / rDirX), dY = Math.abs(1 / rDirY);
                 let stepX, stepY, sX, sY;
 
-                if (rayDirX < 0) { stepX = -1; sX = (p.x - mapX) * dX; }
+                if (rDirX < 0) { stepX = -1; sX = (p.x - mapX) * dX; }
                 else { stepX = 1; sX = (mapX + 1.0 - p.x) * dX; }
-                if (rayDirY < 0) { stepY = -1; sY = (p.y - mapY) * dY; }
+                if (rDirY < 0) { stepY = -1; sY = (p.y - mapY) * dY; }
                 else { stepY = 1; sY = (mapY + 1.0 - p.y) * dY; }
 
                 let hit = 0, side = 0;
@@ -123,7 +108,7 @@
                 let wallY = (200 - h) / 2;
 
                 if (wallImg.complete) {
-                    let wH = (side === 0) ? p.y + pDist * rayDirY : p.x + pDist * rayDirX;
+                    let wH = (side === 0) ? p.y + pDist * rDirY : p.x + pDist * rDirX;
                     wH -= Math.floor(wH);
                     let texX = Math.floor((wH * 4 % 1) * wallImg.width);
                     for (let t = 0; t < 4; t++) {
@@ -133,7 +118,7 @@
                 ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pDist / 10, 0.95)})`;
                 ctx.fillRect(x, wallY, 1, h);
             }
-            requestAnimationFrame(() => loop(cData, fData));
+            requestAnimationFrame(loop);
         }
     </script>
 </body>

@@ -2,37 +2,25 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Full Environment</title>
+    <title>Backrooms - Full Environment Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); 
-            padding: 30px; border: 2px solid #ffea00; cursor: pointer; 
-            font-family: 'Courier New', monospace; z-index: 100;
-        }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
     </style>
 </head>
 <body>
-    <div id="ui" onclick="this.style.display='none'; start()">
-        <h1>THE BACKROOMS</h1>
-        <p>CLICK TO ENTER</p>
-    </div>
+    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
     <canvas id="c"></canvas>
 
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
-        
-        // 1. ASSETS
         const wallImg = new Image(); wallImg.src = 'walls.png';
-        const floorImg = new Image(); floorImg.src = 'floor.png';
-        const ceilImg = new Image(); ceilImg.src = 'celing.png';
 
         function getCellType(x, y) {
             if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
-            const n = Math.sin(x * 12.9 + y * 78.2) * 43758;
+            const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
             return (n - Math.floor(n)) > 0.85 ? 1 : 0;
         }
         
@@ -52,52 +40,54 @@
             if(keys['a']) p.dir -= 0.05;
             if(keys['d']) p.dir += 0.05;
 
-            // Low-res buffer for speed
-            canvas.width = 300; canvas.height = 200;
-            const imgData = ctx.createImageData(300, 200);
+            canvas.width = 400; canvas.height = 300;
 
-            // --- 2. FLOOR & CEILING CASTING ---
-            for(let y = 0; y < 200; y++) {
-                let isFloor = y > 100;
-                let rayDirX0 = Math.cos(p.dir - 0.6);
-                let rayDirY0 = Math.sin(p.dir - 0.6);
-                let rayDirX1 = Math.cos(p.dir + 0.6);
-                let rayDirY1 = Math.sin(p.dir + 0.6);
+            // --- 1. DRAW FLOOR & CEILING FIRST ---
+            // We use simple gradients for speed, but add your 2-tile light logic
+            ctx.fillStyle = "#333333"; ctx.fillRect(0, 150, 400, 150); // Floor
+            ctx.fillStyle = "#888844"; ctx.fillRect(0, 0, 400, 150);   // Ceiling
 
-                let p_row = isFloor ? (y - 100) : (100 - y);
-                let camZ = 100; // Vertical camera height
-                let rowDist = camZ / p_row;
+            // --- 2. DRAW WALLS ON TOP ---
+            for(let x=0; x < 400; x++) {
+                let cameraX = 2 * x / 400 - 1;
+                let rayDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
+                let rayDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
 
-                let floorStepX = rowDist * (rayDirX1 - rayDirX0) / 300;
-                let floorStepY = rowDist * (rayDirY1 - rayDirY0) / 300;
-                let floorX = p.x + rowDist * rayDirX0;
-                let floorY = p.y + rowDist * rayDirY0;
+                let mapX = Math.floor(p.x), mapY = Math.floor(p.y);
+                let deltaDistX = Math.abs(1 / rayDirX), deltaDistY = Math.abs(1 / rayDirY);
+                let stepX, stepY, sideDistX, sideDistY;
 
-                for(let x = 0; x < 300; x++) {
-                    let cellX = Math.floor(floorX);
-                    let cellY = Math.floor(floorY);
-                    
-                    // LIGHTING LOGIC (Every 2 tiles)
-                    let isLight = (!isFloor && cellX % 2 === 0 && cellY % 2 === 0);
+                if (rayDirX < 0) { stepX = -1; sideDistX = (p.x - mapX) * deltaDistX; }
+                else { stepX = 1; sideDistX = (mapX + 1.0 - p.x) * deltaDistX; }
+                if (rayDirY < 0) { stepY = -1; sideDistY = (p.y - mapY) * deltaDistY; }
+                else { stepY = 1; sideDistY = (mapY + 1.0 - p.y) * deltaDistY; }
 
-                    // TILING: 4x for floor (Quarter scale), 1x for ceiling
-                    let tx = Math.floor(((floorX * (isFloor ? 4 : 1)) % 1) * 64);
-                    let ty = Math.floor(((floorY * (isFloor ? 4 : 1)) % 1) * 64);
-
-                    let i = (y * 300 + x) * 4;
-                    imgData.data[i] = isLight ? 255 : (isFloor ? 100 : 180);
-                    imgData.data[i+1] = isLight ? 255 : (isFloor ? 100 : 180);
-                    imgData.data[i+2] = isLight ? 200 : (isFloor ? 80 : 120);
-                    imgData.data[i+3] = 255;
-
-                    floorX += floorStepX; floorY += floorStepY;
+                let hit = 0, side = 0;
+                while (hit === 0) {
+                    if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; side = 0; }
+                    else { sideDistY += deltaDistY; mapY += stepY; side = 1; }
+                    if (getCellType(mapX, mapY) > 0) hit = 1;
                 }
+
+                let perpWallDist = (side === 0) ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY);
+                let h = Math.floor(300 / perpWallDist);
+                let wallY = (300 - h) / 2;
+
+                if (wallImg.complete) {
+                    let wallX = (side === 0) ? p.y + perpWallDist * rayDirY : p.x + perpWallDist * rayDirX;
+                    wallX -= Math.floor(wallX);
+                    let texX = Math.floor((wallX * 4 % 1) * wallImg.width);
+                    let tilesV = 4, segH = h / tilesV;
+                    for (let t = 0; t < tilesV; t++) {
+                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY + (t * segH), 1, segH + 1);
+                    }
+                }
+                
+                // Fog
+                let fog = Math.min(perpWallDist / 10, 0.95);
+                ctx.fillStyle = `rgba(18, 21, 5, ${fog})`;
+                ctx.fillRect(x, wallY, 1, h);
             }
-            ctx.putImageData(imgData, 0, 0);
-
-            // --- 3. DDA WALLS (Paste your working DDA logic here) ---
-            // ... (Ensuring it overwrites the floor/ceiling pixels)
-
             requestAnimationFrame(loop);
         }
     </script>

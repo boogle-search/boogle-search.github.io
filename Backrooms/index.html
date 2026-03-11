@@ -2,24 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - 4x4 Infinite Fixed</title>
+    <title>Backrooms - 4x4 Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            color: #ffea00; text-align: center; background: rgba(0,0,0,0.95); 
-            padding: 30px; border: 2px solid #ffea00; cursor: pointer; 
-            font-family: 'Courier New', monospace; z-index: 100;
-        }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
     </style>
 </head>
 <body>
-    <div id="ui" onclick="this.style.display='none'; start()">
-        <h1>THE BACKROOMS</h1>
-        <p>CLICK TO ENTER</p>
-        <small>WASD to Move | A/D to Turn</small>
-    </div>
+    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
     <canvas id="c"></canvas>
 
     <script>
@@ -27,9 +18,8 @@
         const ctx = canvas.getContext('2d');
         const wallImg = new Image(); wallImg.src = 'walls.png';
 
-        // --- 1. INFINITE GENERATION (0.85 Density) ---
         function getCellType(x, y) {
-            if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0; // Spawn safety
+            if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
             const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
             return (n - Math.floor(n)) > 0.85 ? 1 : 0;
         }
@@ -44,61 +34,48 @@
         }
 
         function loop() {
-            // Movement
-            const speed = 0.05;
-            if(keys['w']) { p.x += Math.cos(p.dir)*speed; p.y += Math.sin(p.dir)*speed; }
-            if(keys['s']) { p.x -= Math.cos(p.dir)*speed; p.y -= Math.sin(p.dir)*speed; }
+            if(keys['w']) { p.x += Math.cos(p.dir)*0.05; p.y += Math.sin(p.dir)*0.05; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*0.05; p.y -= Math.sin(p.dir)*0.05; }
             if(keys['a']) p.dir -= 0.04;
             if(keys['d']) p.dir += 0.04;
 
             canvas.width = 600; canvas.height = 400;
-            
-            // Ceiling and Floor
             ctx.fillStyle = "#1e210d"; ctx.fillRect(0, 0, 600, 200); 
             ctx.fillStyle = "#333333"; ctx.fillRect(0, 200, 600, 200); 
 
-            // --- 2. RAYCASTING ENGINE ---
-            const numRays = 600;
-            for(let i=0; i < numRays; i++) {
-                let rayAngle = p.dir - 0.6 + (i / numRays) * 1.2;
+            for(let i=0; i < 600; i++) {
+                let rayAngle = p.dir - 0.6 + (i / 600) * 1.2;
                 let rx = p.x, ry = p.y;
-                let vx = Math.cos(rayAngle) * 0.015; 
-                let vy = Math.sin(rayAngle) * 0.015;
+                let vx = Math.cos(rayAngle) * 0.01;
+                let vy = Math.sin(rayAngle) * 0.01;
                 let dist = 0;
                 
                 while(dist < 12) {
-                    rx += vx; ry += vy; dist += 0.015;
+                    rx += vx; ry += vy; dist += 0.01;
                     if(getCellType(Math.floor(rx), Math.floor(ry)) === 1) break;
                 }
                 
-                let correctedDist = dist * Math.cos(rayAngle - p.dir);
-                let h = canvas.height / correctedDist;
+                let h = canvas.height / (dist * Math.cos(rayAngle - p.dir));
                 let wallY = (canvas.height - h) / 2;
 
-                // --- 3. 4x4 TEXTURE LOGIC (FIXED) ---
                 if (wallImg.complete) {
-                    // Check if we hit a vertical or horizontal wall to fix missing textures
+                    // --- THE FIX: SIDE DETECTION ---
                     let hitX = rx % 1;
                     let hitY = ry % 1;
-                    let texPos = (Math.abs(hitX - 0.5) > Math.abs(hitY - 0.5)) ? hitX : hitY;
+                    // If we are closer to the X edge, use Y coordinate for texture (and vice versa)
+                    let texX_raw = (Math.abs(hitX - 0.5) > Math.abs(hitY - 0.5)) ? hitY : hitX;
                     
-                    // Horizontal 4x Tiling
-                    let finalTexX = (texPos * 4 % 1) * wallImg.width;
+                    // Multiply by 4 for the 4x horizontal tiling
+                    let texX = (texX_raw * 4 % 1) * wallImg.width;
                     
-                    // Vertical 4x Tiling
-                    let tilesV = 4; 
+                    let tilesV = 4; // 4x vertical tiling
                     let segH = h / tilesV;
                     for (let t = 0; t < tilesV; t++) {
-                        ctx.drawImage(
-                            wallImg, 
-                            finalTexX, 0, 1, wallImg.height, 
-                            i, wallY + (t * segH), 1, segH + 0.8 // +0.8 removes gaps
-                        );
+                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, i, wallY + (t * segH), 1, segH + 1);
                     }
                 }
                 
-                // Atmosphere Fog
-                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(dist / 9, 0.98)})`;
+                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(dist / 9, 0.95)})`;
                 ctx.fillRect(i, wallY, 1, h);
             }
             requestAnimationFrame(loop);

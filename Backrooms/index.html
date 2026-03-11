@@ -2,25 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Smooth Floor Fix</title>
+    <title>Backrooms - Steady Eye Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: #000; padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
     </style>
 </head>
 <body>
-    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
+    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO START</p></div>
     <canvas id="c"></canvas>
 
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
-        
-        // 1. Assets
         const wallImg = new Image(); wallImg.src = 'walls.png';
-        const floorImg = new Image(); floorImg.src = 'floor.png';
-        const ceilImg = new Image(); ceilImg.src = 'celing.png';
 
         function getCell(x, y) {
             if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
@@ -38,70 +34,77 @@
         }
 
         function loop() {
-            // Movement Logic
-            const speed = 0.06;
-            if(keys['w']) { p.x += Math.cos(p.dir)*speed; p.y += Math.sin(p.dir)*speed; }
-            if(keys['s']) { p.x -= Math.cos(p.dir)*speed; p.y -= Math.sin(p.dir)*speed; }
+            // Smooth Movement
+            if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
             if(keys['a']) p.dir -= 0.05;
             if(keys['d']) p.dir += 0.05;
 
             canvas.width = 400; canvas.height = 300;
+            const buffer = ctx.createImageData(400, 300);
 
-            // --- 2. THE "NO-FLASH" FLOOR & CEILING ---
-            // We use patterns and move them with the player to keep them locked
-            const fPat = ctx.createPattern(floorImg, 'repeat');
-            const cPat = ctx.createPattern(ceilImg, 'repeat');
+            // 1. STEADY FLOOR & CEILING (1/8th Floor, 2-Tile Lights)
+            for(let y = 0; y < 300; y++) {
+                let isF = y > 150;
+                let p_dist = Math.abs(150 / (y - 150));
 
-            // Draw Ceiling
-            ctx.save();
-            ctx.translate(200 - p.x * 50, 0); // Offset based on player position
-            ctx.fillStyle = cPat;
-            ctx.fillRect(-2000, 0, 4000, 150);
-            ctx.restore();
+                for(let x = 0; x < 400; x++) {
+                    let cameraX = 2 * x / 400 - 1;
+                    let rDX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
+                    let rDY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
 
-            // Draw Floor
-            ctx.save();
-            ctx.translate(200 - p.x * 100, 0); // 1/8th-style tiling offset
-            ctx.scale(0.125, 0.125); // Scale down for 1/8th detail
-            ctx.fillStyle = fPat;
-            ctx.fillRect(-16000, 1200, 32000, 1200); 
-            ctx.restore();
+                    let wX = p.x + p_dist * rDX;
+                    let wY = p.y + p_dist * rDY;
 
-            // --- 3. DDA WALLS (4x4 Tiling) ---
+                    // Small center light every 2 units
+                    let tX = Math.floor(wX), tY = Math.floor(wY);
+                    let rX = wX % 1, rY = wY % 1;
+                    let isL = (!isF && tX % 2 === 0 && tY % 2 === 0 && rX > 0.35 && rX < 0.65 && rY > 0.35 && rY < 0.65);
+
+                    let i = (y * 400 + x) * 4;
+                    if (isL) {
+                        buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 220;
+                    } else {
+                        let fog = Math.min(p_dist / 12, 1);
+                        let r = isF ? 80 : 140, g = isF ? 75 : 135, b = isF ? 50 : 80;
+                        buffer.data[i] = r * (1 - fog) + 18 * fog;
+                        buffer.data[i+1] = g * (1 - fog) + 21 * fog;
+                        buffer.data[i+2] = b * (1 - fog) + 5 * fog;
+                    }
+                    buffer.data[i+3] = 255;
+                }
+            }
+            ctx.putImageData(buffer, 0, 0);
+
+            // 2. DDA WALLS (4x4 Locked Tiling)
             for(let x=0; x < 400; x++) {
                 let cameraX = 2 * x / 400 - 1;
-                let rDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
-                let rDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
-                let mapX = Math.floor(p.x), mapY = Math.floor(p.y);
-                let dX = Math.abs(1 / rDirX), dY = Math.abs(1 / rDirY);
-                let stepX, stepY, sX, sY;
+                let rDX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
+                let rDY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
+                let mX = Math.floor(p.x), mY = Math.floor(p.y);
+                let dX = Math.abs(1/rDX), dY = Math.abs(1/rDY);
+                let sX, sY, stX, stY;
 
-                if (rDirX < 0) { stepX = -1; sX = (p.x - mapX) * dX; }
-                else { stepX = 1; sX = (mapX + 1.0 - p.x) * dX; }
-                if (rDirY < 0) { stepY = -1; sY = (p.y - mapY) * dY; }
-                else { stepY = 1; sY = (mapY + 1.0 - p.y) * dY; }
+                if(rDX<0){stX=-1;sX=(p.x-mX)*dX;}else{stX=1;sX=(mX+1-p.x)*dX;}
+                if(rDY<0){stY=-1;sY=(p.y-mY)*dY;}else{stY=1;sY=(mY+1-p.y)*dY;}
 
-                let hit = 0, side = 0;
-                while (hit === 0) {
-                    if (sX < sY) { sX += dX; mapX += stepX; side = 0; }
-                    else { sY += dY; mapY += stepY; side = 1; }
-                    if (getCell(mapX, mapY) > 0) hit = 1;
+                let hit=0, side=0;
+                while(hit===0){
+                    if(sX<sY){sX+=dX;mX+=stX;side=0;}else{sY+=dY;mY+=stY;side=1;}
+                    if(getCell(mX, mY)>0)hit=1;
                 }
 
-                let pDist = (side === 0) ? (sX - dX) : (sideY - dY);
-                let h = Math.floor(300 / pDist);
-                let wallY = (300 - h) / 2;
+                let pD = (side===0)?(sX-dX):(sY-dY);
+                let h = Math.floor(300/pD);
+                let wY = (300-h)/2;
 
-                if (wallImg.complete) {
-                    let wH = (side === 0) ? p.y + pDist * rDirY : p.x + pDist * rDirX;
-                    wH -= Math.floor(wH);
-                    let texX = Math.floor((wH * 4 % 1) * wallImg.width);
-                    for (let t = 0; t < 4; t++) {
-                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY + (t * h/4), 1, h/4 + 1);
-                    }
+                if(wallImg.complete){
+                    let hitP = (side===0)?p.y+pD*rDY:p.x+pD*rDX;
+                    let texX = Math.floor((hitP*4%1)*wallImg.width);
+                    for(let t=0; t<4; t++) ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wY+(t*h/4), 1, h/4+1);
                 }
-                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pDist / 10, 0.95)})`;
-                ctx.fillRect(x, wallY, 1, h);
+                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pD/10, 0.95)})`;
+                ctx.fillRect(x, wY, 1, h);
             }
             requestAnimationFrame(loop);
         }

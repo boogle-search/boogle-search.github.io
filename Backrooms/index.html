@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Backrooms Raycaster</title>
+    <title>Backrooms - Continuous Raycaster</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff0; text-align: center; background: #000; padding: 20px; border: 2px solid #ff0; cursor: pointer; font-family: monospace; }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff0; text-align: center; background: #000; padding: 20px; border: 2px solid #ff0; cursor: pointer; font-family: monospace; z-index: 10; }
     </style>
 </head>
 <body>
@@ -15,19 +15,25 @@
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
+        
+        // --- 1. Load Your Assets ---
+        const wallImg = new Image(); wallImg.src = 'walls.png';
+        const floorImg = new Image(); floorImg.src = 'floor.png';
+        const ceilImg = new Image(); ceilImg.src = 'celing.png';
+
+        // --- 2. Map & Player (Matching your original seed/spawn) ---
         const map = [
             [1,1,1,1,1,1,1,1,1,1],
-            [1,0,0,0,0,1,0,0,0,1],
-            [1,0,1,1,0,0,0,1,0,1],
-            [1,0,1,0,0,1,0,1,0,1],
-            [1,0,0,0,1,1,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1],
+            [1,0,0,1,0,0,1,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,0,0,0,0,1,0,1],
+            [1,0,0,0,0,0,0,0,0,1],
             [1,1,1,1,1,1,1,1,1,1]
         ];
         
-        let p = { x: 1.5, y: 1.5, dir: 0 };
+        let p = { x: 2.5, y: 2.5, dir: 0 };
         const keys = {};
-        const wallImg = new Image();
-        wallImg.src = 'walls.png';
 
         function start() {
             window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
@@ -36,34 +42,49 @@
         }
 
         function loop() {
-            // Movement
-            if(keys['w']) { p.x += Math.cos(p.dir)*0.05; p.y += Math.sin(p.dir)*0.05; }
-            if(keys['s']) { p.x -= Math.cos(p.dir)*0.05; p.y -= Math.sin(p.dir)*0.05; }
-            if(keys['a']) p.dir -= 0.05;
-            if(keys['d']) p.dir += 0.05;
+            // Movement & Rotation
+            if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
+            if(keys['a']) p.dir -= 0.04;
+            if(keys['d']) p.dir += 0.04;
 
-            // Render
-            canvas.width = window.innerWidth / 2;
-            canvas.height = window.innerHeight / 2;
+            // Render Setup (Higher res for "Continuous" look)
+            canvas.width = 400; 
+            canvas.height = 300;
             
-            ctx.fillStyle = "#888844"; ctx.fillRect(0, 0, canvas.width, canvas.height/2); // Ceiling
-            ctx.fillStyle = "#444444"; ctx.fillRect(0, canvas.height/2, canvas.width, canvas.height/2); // Floor
+            // Draw Ceiling and Floor Colors (Backup if textures fail)
+            ctx.fillStyle = "#888844"; ctx.fillRect(0, 0, 400, 150);
+            ctx.fillStyle = "#444444"; ctx.fillRect(0, 150, 400, 150);
 
-            for(let i=0; i < canvas.width; i++) {
-                let rayDir = p.dir - 0.5 + (i / canvas.width);
+            // --- 3. Raycasting Engine ---
+            for(let i=0; i < 400; i++) {
+                let rayDir = p.dir - 0.6 + (i / 400) * 1.2;
                 let rx = p.x, ry = p.y;
-                let d = 0;
-                while(d < 10) {
-                    rx += Math.cos(rayDir) * 0.1;
-                    ry += Math.sin(rayDir) * 0.1;
-                    d += 0.1;
+                let stepX = Math.cos(rayDir) * 0.02;
+                let stepY = Math.sin(rayDir) * 0.02;
+                let dist = 0;
+                
+                // Continuous Marching
+                while(dist < 12) {
+                    rx += stepX; ry += stepY; dist += 0.02;
                     if(map[Math.floor(ry)]?.[Math.floor(rx)] === 1) break;
                 }
                 
-                let h = canvas.height / (d * Math.cos(rayDir - p.dir));
-                // Draw textured wall slice
-                ctx.drawImage(wallImg, (rx+ry)%1 * wallImg.width, 0, 1, wallImg.height, i, (canvas.height-h)/2, 1, h);
+                // Perspective Correction
+                let h = 300 / (dist * Math.cos(rayDir - p.dir));
+                let wallY = (300 - h) / 2;
+
+                // Draw Wall Slice
+                if (wallImg.complete) {
+                    let texX = (rx + ry) % 1 * wallImg.width;
+                    ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, i, wallY, 1, h);
+                }
+                
+                // Simple darkness effect (Depth Fog)
+                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(dist/8, 1)})`;
+                ctx.fillRect(i, wallY, 1, h);
             }
+            
             requestAnimationFrame(loop);
         }
     </script>

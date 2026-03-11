@@ -1,105 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Backrooms - Final Fix</title>
+    <title>Backrooms Raycaster</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #121505; }
-        canvas { display: block; width: 100vw; height: 100vh; }
-        #ui {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #ffea00; text-align: center; background: #000;
-            padding: 40px; border: 3px solid #ffea00; cursor: pointer; z-index: 1000;
-            font-family: 'Courier New', monospace;
-        }
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff0; text-align: center; background: #000; padding: 20px; border: 2px solid #ff0; cursor: pointer; font-family: monospace; }
     </style>
 </head>
 <body>
-    <div id="ui" onclick="init()">
-        <h1>THE BACKROOMS</h1>
-        <p>>>> CLICK TO START <<<</p>
-    </div>
-
-    <!-- More reliable link for Chrome/Opera -->
-    <script src="https://ajax.googleapis.com"></script>
+    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
+    <canvas id="c"></canvas>
 
     <script>
-        function init() {
-            // Remove UI immediately
-            document.getElementById('ui').style.display = 'none';
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        const map = [
+            [1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,1,0,0,0,1],
+            [1,0,1,1,0,0,0,1,0,1],
+            [1,0,1,0,0,1,0,1,0,1],
+            [1,0,0,0,1,1,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1]
+        ];
+        
+        let p = { x: 1.5, y: 1.5, dir: 0 };
+        const keys = {};
+        const wallImg = new Image();
+        wallImg.src = 'walls.png';
 
-            const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x121505);
-            scene.fog = new THREE.FogExp2(0x121505, 0.1); // Thinner fog to see clearly
-
-            const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0.5, 1.6, 0.5);
-
-            const renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
-
-            // EMERGENCY COLORS (If images fail, you see Yellow/Grey)
-            const wallMat = new THREE.MeshBasicMaterial({ color: 0xcccc00 });
-            const floorMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
-            const ceilMat = new THREE.MeshBasicMaterial({ color: 0x888844 });
-
-            const loader = new THREE.TextureLoader();
-            // Try loading your images relative to the current folder
-            loader.load('./walls.png', (t) => { wallMat.map = t; wallMat.needsUpdate = true; });
-            loader.load('./floor.png', (t) => { floorMat.map = t; floorMat.needsUpdate = true; });
-            loader.load('./celing.png', (t) => { ceilMat.map = t; ceilMat.needsUpdate = true; });
-
-            function createChunk(cx, cz) {
-                const group = new THREE.Group();
-                for (let x = 0; x < 8; x++) {
-                    for (let z = 0; z < 8; z++) {
-                        const wx = cx * 8 + x, wz = cz * 8 + z;
-                        
-                        // Floor and Ceiling
-                        const f = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMat);
-                        f.rotation.x = -Math.PI/2; f.position.set(wx, 0, wz); group.add(f);
-                        const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ceilMat);
-                        c.rotation.x = Math.PI/2; c.position.set(wx, 2.5, wz); group.add(c);
-                        
-                        // Force wall placement
-                        if (Math.sin(wx * 0.5 + wz * 0.5) > 0.4 && (Math.abs(wx) > 1 || Math.abs(wz) > 1)) {
-                            const w = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 1), wallMat);
-                            w.position.set(wx, 1.25, wz); group.add(w);
-                        }
-                    }
-                }
-                scene.add(group); return group;
-            }
-
-            const chunks = new Map();
-            const keys = {};
+        function start() {
             window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
             window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+            loop();
+        }
 
-            // Proper pointer lock request
-            renderer.domElement.requestPointerLock = renderer.domElement.requestPointerLock || renderer.domElement.mozRequestPointerLock;
-            renderer.domElement.requestPointerLock();
+        function loop() {
+            // Movement
+            if(keys['w']) { p.x += Math.cos(p.dir)*0.05; p.y += Math.sin(p.dir)*0.05; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*0.05; p.y -= Math.sin(p.dir)*0.05; }
+            if(keys['a']) p.dir -= 0.05;
+            if(keys['d']) p.dir += 0.05;
 
-            function animate() {
-                requestAnimationFrame(animate);
-                const move = new THREE.Vector3();
-                if (keys['w']) move.z -= 0.08; if (keys['s']) move.z += 0.08;
-                if (keys['a']) move.x -= 0.08; if (keys['d']) move.x += 0.08;
-                
-                camera.position.add(move.applyQuaternion(camera.quaternion));
-                camera.position.y = 1.6; // Keep player on floor
+            // Render
+            canvas.width = window.innerWidth / 2;
+            canvas.height = window.innerHeight / 2;
+            
+            ctx.fillStyle = "#888844"; ctx.fillRect(0, 0, canvas.width, canvas.height/2); // Ceiling
+            ctx.fillStyle = "#444444"; ctx.fillRect(0, canvas.height/2, canvas.width, canvas.height/2); // Floor
 
-                const ccx = Math.floor(camera.position.x / 8), ccz = Math.floor(camera.position.z / 8);
-                for (let dx = -1; dx <= 1; dx++) {
-                    for (let dz = -1; dz <= 1; dz++) {
-                        const k = `${ccx+dx},${ccz+dz}`;
-                        if (!chunks.has(k)) chunks.set(k, createChunk(ccx+dx, ccz+dz));
-                    }
+            for(let i=0; i < canvas.width; i++) {
+                let rayDir = p.dir - 0.5 + (i / canvas.width);
+                let rx = p.x, ry = p.y;
+                let d = 0;
+                while(d < 10) {
+                    rx += Math.cos(rayDir) * 0.1;
+                    ry += Math.sin(rayDir) * 0.1;
+                    d += 0.1;
+                    if(map[Math.floor(ry)]?.[Math.floor(rx)] === 1) break;
                 }
-                renderer.render(scene, camera);
+                
+                let h = canvas.height / (d * Math.cos(rayDir - p.dir));
+                // Draw textured wall slice
+                ctx.drawImage(wallImg, (rx+ry)%1 * wallImg.width, 0, 1, wallImg.height, i, (canvas.height-h)/2, 1, h);
             }
-            animate();
+            requestAnimationFrame(loop);
         }
     </script>
 </body>

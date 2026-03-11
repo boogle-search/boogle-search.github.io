@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - 4x4 Fixed</title>
+    <title>Backrooms - 4x4 Exact Tiling</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
@@ -49,21 +49,26 @@
                 let vx = Math.cos(rayAngle) * 0.01;
                 let vy = Math.sin(rayAngle) * 0.01;
                 let dist = 0;
+                let side = 0; // 0 for X-side, 1 for Y-side
                 
                 while(dist < 12) {
-                    rx += vx; ry += vy; dist += 0.01;
-                    if(getCellType(Math.floor(rx), Math.floor(ry)) === 1) break;
+                    let nextX = rx + vx;
+                    let nextY = ry + vy;
+                    dist += 0.01;
+                    
+                    // Check if we hit a wall and which side we hit
+                    if(getCellType(Math.floor(nextX), Math.floor(ry)) === 1) { side = 0; rx = nextX; break; }
+                    if(getCellType(Math.floor(rx), Math.floor(nextY)) === 1) { side = 1; ry = nextY; break; }
+                    
+                    rx = nextX; ry = nextY;
                 }
                 
                 let h = canvas.height / (dist * Math.cos(rayAngle - p.dir));
                 let wallY = (canvas.height - h) / 2;
 
                 if (wallImg.complete) {
-                    // --- THE FIX: SIDE DETECTION ---
-                    let hitX = rx % 1;
-                    let hitY = ry % 1;
-                    // If we are closer to the X edge, use Y coordinate for texture (and vice versa)
-                    let texX_raw = (Math.abs(hitX - 0.5) > Math.abs(hitY - 0.5)) ? hitY : hitX;
+                    // THE FIX: Correct UV mapping for BOTH sides
+                    let texX_raw = (side === 0) ? (ry % 1) : (rx % 1);
                     
                     // Multiply by 4 for the 4x horizontal tiling
                     let texX = (texX_raw * 4 % 1) * wallImg.width;

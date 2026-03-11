@@ -1,34 +1,49 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Backrooms - Continuous Raycaster</title>
+    <meta charset="UTF-8">
+    <title>Backrooms - Continuous Raycaster HQ</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff0; text-align: center; background: #000; padding: 20px; border: 2px solid #ff0; cursor: pointer; font-family: monospace; z-index: 10; }
+        body { margin: 0; overflow: hidden; background: #121505; }
+        canvas { 
+            display: block; 
+            width: 100vw; 
+            height: 100vh; 
+            image-rendering: pixelated; /* Keeps the retro look sharp */
+        }
+        #ui { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); 
+            padding: 30px; border: 2px solid #ffea00; cursor: pointer; 
+            font-family: 'Courier New', monospace; z-index: 100;
+        }
     </style>
 </head>
 <body>
-    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
+    <div id="ui" onclick="this.style.display='none'; start()">
+        <h1>THE BACKROOMS</h1>
+        <p>CLICK TO ENTER</p>
+        <small>WASD to Walk | A/D to Turn</small>
+    </div>
     <canvas id="c"></canvas>
 
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
         
-        // --- 1. Load Your Assets ---
+        // --- 1. ASSET LOADING ---
         const wallImg = new Image(); wallImg.src = 'walls.png';
         const floorImg = new Image(); floorImg.src = 'floor.png';
         const ceilImg = new Image(); ceilImg.src = 'celing.png';
 
-        // --- 2. Map & Player (Matching your original seed/spawn) ---
+        // --- 2. MAP & PLAYER ---
+        // 1 = Wall, 0 = Empty Space
         const map = [
             [1,1,1,1,1,1,1,1,1,1],
             [1,0,0,0,0,0,0,0,0,1],
-            [1,0,0,1,0,0,1,0,0,1],
-            [1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,1,1,0,1],
             [1,0,1,0,0,0,0,1,0,1],
-            [1,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,1,1,0,0,0,1],
             [1,1,1,1,1,1,1,1,1,1]
         ];
         
@@ -42,47 +57,67 @@
         }
 
         function loop() {
-            // Movement & Rotation
-            if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
-            if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
-            if(keys['a']) p.dir -= 0.04;
-            if(keys['d']) p.dir += 0.04;
+            // --- 3. MOVEMENT ---
+            const moveSpeed = 0.05;
+            const rotSpeed = 0.04;
+            if(keys['w']) { p.x += Math.cos(p.dir)*moveSpeed; p.y += Math.sin(p.dir)*moveSpeed; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*moveSpeed; p.y -= Math.sin(p.dir)*moveSpeed; }
+            if(keys['a']) p.dir -= rotSpeed;
+            if(keys['d']) p.dir += rotSpeed;
 
-            // Render Setup (Higher res for "Continuous" look)
-            canvas.width = 400; 
-            canvas.height = 300;
+            // --- 4. RENDER SETUP ---
+            canvas.width = 600; // Resolution width
+            canvas.height = 400; // Resolution height
             
-            // Draw Ceiling and Floor Colors (Backup if textures fail)
-            ctx.fillStyle = "#888844"; ctx.fillRect(0, 0, 400, 150);
-            ctx.fillStyle = "#444444"; ctx.fillRect(0, 150, 400, 150);
+            // Draw Background (Ceiling/Floor Colors)
+            ctx.fillStyle = "#1e210d"; ctx.fillRect(0, 0, 600, 200); // Darker Ceiling
+            ctx.fillStyle = "#333333"; ctx.fillRect(0, 200, 600, 200); // Grey Floor
 
-            // --- 3. Raycasting Engine ---
-            for(let i=0; i < 400; i++) {
-                let rayDir = p.dir - 0.6 + (i / 400) * 1.2;
+            // --- 5. RAYCASTING ENGINE ---
+            const fov = 1.1; // Field of view
+            const numRays = 600;
+            const stepSize = 0.02; // Precision of the "Continuous" march
+
+            for(let i=0; i < numRays; i++) {
+                let rayAngle = p.dir - (fov/2) + (i / numRays) * fov;
                 let rx = p.x, ry = p.y;
-                let stepX = Math.cos(rayDir) * 0.02;
-                let stepY = Math.sin(rayDir) * 0.02;
+                let vx = Math.cos(rayAngle) * stepSize;
+                let vy = Math.sin(rayAngle) * stepSize;
                 let dist = 0;
                 
-                // Continuous Marching
-                while(dist < 12) {
-                    rx += stepX; ry += stepY; dist += 0.02;
+                // March the ray until it hits a wall
+                while(dist < 15) {
+                    rx += vx; ry += vy; dist += stepSize;
                     if(map[Math.floor(ry)]?.[Math.floor(rx)] === 1) break;
                 }
                 
-                // Perspective Correction
-                let h = 300 / (dist * Math.cos(rayDir - p.dir));
-                let wallY = (300 - h) / 2;
+                // Fix "Fish-eye" distortion
+                let correctedDist = dist * Math.cos(rayAngle - p.dir);
+                let wallH = canvas.height / correctedDist;
+                let wallY = (canvas.height - wallH) / 2;
 
-                // Draw Wall Slice
+                // --- 6. WALL TEXTURE & VERTICAL TILING ---
                 if (wallImg.complete) {
                     let texX = (rx + ry) % 1 * wallImg.width;
-                    ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, i, wallY, 1, h);
+                    
+                    // VERTICAL REPEATING LOGIC
+                    let tiles = 2; // How many times the texture repeats vertically
+                    let segmentH = wallH / tiles;
+
+                    for (let t = 0; t < tiles; t++) {
+                        ctx.drawImage(
+                            wallImg, 
+                            texX, 0, 1, wallImg.height,           // Source slice
+                            i, wallY + (t * segmentH), 1, segmentH // Stacked destination
+                        );
+                    }
                 }
                 
-                // Simple darkness effect (Depth Fog)
-                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(dist/8, 1)})`;
-                ctx.fillRect(i, wallY, 1, h);
+                // --- 7. DEPTH FOG (Atmosphere) ---
+                // Darkens the walls as they get further away
+                let fogAmount = Math.min(dist / 10, 0.95);
+                ctx.fillStyle = `rgba(18, 21, 5, ${fogAmount})`;
+                ctx.fillRect(i, wallY, 1, wallH);
             }
             
             requestAnimationFrame(loop);

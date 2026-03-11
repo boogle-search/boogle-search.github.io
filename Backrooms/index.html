@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Solid Reality</title>
+    <title>Backrooms - Reality Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
@@ -10,13 +10,19 @@
     </style>
 </head>
 <body>
-    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
+    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO START</p></div>
     <canvas id="c"></canvas>
 
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
         const wallImg = new Image(); wallImg.src = 'walls.png';
+        const floorImg = new Image(); floorImg.src = 'floor.png';
+        const ceilImg = new Image(); ceilImg.src = 'celing.png';
+
+        // Hidden canvases to read your texture pixels
+        const fCan = document.createElement('canvas'), fCtx = fCan.getContext('2d');
+        const cCan = document.createElement('canvas'), cCtx = cCan.getContext('2d');
 
         function getCell(x, y) {
             if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
@@ -28,58 +34,66 @@
         const keys = {};
 
         function start() {
+            // Get pixel data from your images once they load
+            fCan.width = fCan.height = 64; fCtx.drawImage(floorImg, 0, 0, 64, 64);
+            cCan.width = cCan.height = 64; cCtx.drawImage(ceilImg, 0, 0, 64, 64);
+            const fP = fCtx.getImageData(0, 0, 64, 64).data;
+            const cP = cCtx.getImageData(0, 0, 64, 64).data;
+
             window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
             window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-            loop();
+            loop(fP, cP);
         }
 
-        function loop() {
+        function loop(fP, cP) {
             if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
             if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
             if(keys['a']) p.dir -= 0.05;
             if(keys['d']) p.dir += 0.05;
 
-            // Internal Resolution MUST match the height math
-            const vW = 300; const vH = 200;
-            canvas.width = vW; canvas.height = vH;
-            const buffer = ctx.createImageData(vW, vH);
+            // 300x200 resolution keeps it fast
+            canvas.width = 300; canvas.height = 200;
+            const buffer = ctx.createImageData(300, 200);
 
-            // 1. SYNCED FLOOR & CEILING (Fixes the "Exploded" world)
-            for(let y = 0; y < vH; y++) {
-                let isFloor = y > vH / 2;
-                let p_dist = Math.abs((vH / 2) / (y - (vH / 2)));
+            // --- 1. FLOOR & CEILING (DRAWN FIRST AS BACKGROUND) ---
+            for(let y = 0; y < 200; y++) {
+                let isF = y > 100;
+                let p_dist = Math.abs(100 / (y - 100));
 
-                for(let x = 0; x < vW; x++) {
-                    let cameraX = 2 * x / vW - 1;
-                    let rDX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
-                    let rDY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
+                for(let x = 0; x < 300; x++) {
+                    let cX = 2 * x / 300 - 1;
+                    let rDX = Math.cos(p.dir) + Math.sin(p.dir) * cX * -0.66;
+                    let rDY = Math.sin(p.dir) - Math.cos(p.dir) * cX * -0.66;
 
                     let wX = p.x + p_dist * rDX;
                     let wY = p.y + p_dist * rDY;
 
-                    // Light spacing: 2x2 grid
+                    // Lights: every 2nd tile
                     let tX = Math.floor(wX), tY = Math.floor(wY);
                     let rX = wX % 1, rY = wY % 1;
-                    let isL = (!isFloor && tX % 2 === 0 && tY % 2 === 0 && rX > 0.3 && rX < 0.7 && rY > 0.3 && rY < 0.7);
+                    let isL = (!isF && tX % 2 === 0 && tY % 2 === 0 && rX > 0.3 && rX < 0.7 && rY > 0.3 && rY < 0.7);
 
-                    let i = (y * vW + x) * 4;
+                    let tx = Math.floor((wX * (isF ? 8 : 1) % 1) * 64);
+                    let ty = Math.floor((wY * (isF ? 8 : 1) % 1) * 64);
+                    let texI = (ty * 64 + tx) * 4;
+
+                    let i = (y * 300 + x) * 4;
                     if (isL) {
                         buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 200;
                     } else {
-                        let fog = Math.min(p_dist / 10, 1);
-                        let r = isFloor ? 80 : 140, g = isFloor ? 75 : 135, b = isFloor ? 50 : 80;
-                        buffer.data[i] = r * (1 - fog) + 18 * fog;
-                        buffer.data[i+1] = g * (1 - fog) + 21 * fog;
-                        buffer.data[i+2] = b * (1 - fog) + 5 * fog;
+                        let fog = Math.min(p_dist / 12, 1);
+                        buffer.data[i] = (isF ? fP[texI] : cP[texI]) * (1 - fog) + 18 * fog;
+                        buffer.data[i+1] = (isF ? fP[texI+1] : cP[texI+1]) * (1 - fog) + 21 * fog;
+                        buffer.data[i+2] = (isF ? fP[texI+2] : cP[texI+2]) * (1 - fog) + 5 * fog;
                     }
                     buffer.data[i+3] = 255;
                 }
             }
             ctx.putImageData(buffer, 0, 0);
 
-            // 2. WALLS (Glued to the ground)
-            for(let x=0; x < vW; x++) {
-                let cameraX = 2 * x / vW - 1;
+            // --- 2. WALLS (DRAWN ON TOP) ---
+            for(let x=0; x < 300; x++) {
+                let cameraX = 2 * x / 300 - 1;
                 let rDX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
                 let rDY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
                 let mX = Math.floor(p.x), mY = Math.floor(p.y);
@@ -96,24 +110,20 @@
                 }
 
                 let pD = (side===0)?(sX-dX):(sY-dY);
-                let h = Math.floor(vH / pD);
-                let wallY = (vH - h) / 2;
+                let h = Math.floor(200 / pD);
+                let wY = (200 - h) / 2;
 
                 if(wallImg.complete){
-                    let hitP = (side===0)?p.y+pD*rDY:p.x+pD*rDX;
-                    let texX = Math.floor((hitP * 4 % 1) * wallImg.width);
-                    
-                    // Draw Solid behind texture to stop "ghosting"
-                    ctx.fillStyle = "#000"; ctx.fillRect(x, wallY, 1, h);
-                    
+                    let hP = (side===0)?p.y+pD*rDY:p.x+pD*rDX;
+                    let texX = Math.floor((hP * 4 % 1) * wallImg.width);
                     for(let t=0; t<4; t++) {
-                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY+(t*h/4), 1, h/4+1);
+                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wY+(t*h/4), 1, h/4+1);
                     }
                 }
-                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pD/10, 0.98)})`;
-                ctx.fillRect(x, wallY, 1, h);
+                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pD/10, 0.95)})`;
+                ctx.fillRect(x, wY, 1, h);
             }
-            requestAnimationFrame(loop);
+            requestAnimationFrame(() => loop(fP, cP));
         }
     </script>
 </body>

@@ -2,132 +2,90 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Ultimate Remake</title>
+    <title>Backrooms - Steady Raycaster</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #121505; font-family: 'Courier New', monospace; }
-        canvas { display: block; width: 100vw; height: 100vh; }
-        #ui {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #ffea00; text-align: center; background: rgba(0,0,0,0.95);
-            padding: 30px; border: 2px solid #ffea00; cursor: pointer; z-index: 100;
-        }
+        body { margin: 0; overflow: hidden; background: #121505; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: auto; }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: #000; padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; }
     </style>
 </head>
 <body>
-    <div id="ui"><h1>THE BACKROOMS</h1><p>CLICK TO START</p></div>
+    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
+    <canvas id="c"></canvas>
 
-    <!-- This link bypasses the security errors from before -->
-    <script type="module">
-        import * as THREE from 'https://cdn.skypack.dev';
+    <script>
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        const wallImg = new Image(); wallImg.src = 'walls.png';
+        const floorImg = new Image(); floorImg.src = 'floor.png';
+        const ceilImg = new Image(); ceilImg.src = 'celing.png';
 
-        // --- 1. SCENE SETUP ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x121505);
-        scene.fog = new THREE.FogExp2(0x121505, 0.15);
-
-        const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0.5, 1.7, 0.5); // Start at eye level
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        // --- 2. TEXTURES (YOUR EXACT SCALES) ---
-        const loader = new THREE.TextureLoader();
-        
-        const loadTex = (url, repX, repY) => {
-            const t = loader.load(url);
-            t.wrapS = t.wrapT = THREE.RepeatWrapping;
-            t.repeat.set(repX, repY);
-            // This stops the "flashing" and "shimmering"
-            t.magFilter = THREE.NearestFilter; 
-            t.minFilter = THREE.NearestMipmapLinearFilter;
-            return t;
-        };
-
-        // Walls: 4 blocks wide, 10 blocks high (to match 2.5 height scale)
-        const wallMat = new THREE.MeshBasicMaterial({ map: loadTex('walls.png', 4, 10) });
-        // Floor: 1/8th scale carpet
-        const floorMat = new THREE.MeshBasicMaterial({ map: loadTex('floor.png', 8, 8), color: 0x888888 });
-        // Ceiling: standard tiling
-        const ceilMat = new THREE.MeshBasicMaterial({ map: loadTex('celing.png', 1, 1), color: 0xffffaa });
-        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-        // --- 3. INFINITE GENERATION ---
-        const chunks = new Map();
-        function getCellType(x, z) {
-            if (Math.abs(x) < 2 && Math.abs(z) < 2) return 0;
-            const n = Math.sin(x * 12.9 + z * 78.2) * 43758;
+        function getCellType(x, y) {
+            if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
+            const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
             return (n - Math.floor(n)) > 0.85 ? 1 : 0;
         }
+        
+        let p = { x: 2.5, y: 2.5, dir: 0 };
+        const keys = {};
 
-        function createChunk(cx, cz) {
-            const group = new THREE.Group();
-            for (let x = 0; x < 8; x++) {
-                for (let z = 0; z < 8; z++) {
-                    const wx = cx * 8 + x, wz = cz * 8 + z;
+        function start() {
+            window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+            window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+            loop();
+        }
 
-                    // Floor
-                    const f = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMat);
-                    f.rotation.x = -Math.PI/2; f.position.set(wx, 0, wz); group.add(f);
+        function loop() {
+            if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
+            if(keys['a']) p.dir -= 0.05;
+            if(keys['d']) p.dir += 0.05;
 
-                    // Ceiling + 2-tile Lights
-                    const isLight = (wx % 2 === 0 && wz % 2 === 0);
-                    const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), isLight ? lightMat : ceilMat);
-                    c.rotation.x = Math.PI/2; c.position.set(wx, 2.5, wz); group.add(c);
+            // HIGHER RESOLUTION = LESS FLASHING
+            canvas.width = 800; canvas.height = 450;
+            
+            // 1. Draw Ceiling and Floor (Simple colors to stop the flashing)
+            ctx.fillStyle = "#888844"; ctx.fillRect(0, 0, 800, 225); 
+            ctx.fillStyle = "#444444"; ctx.fillRect(0, 225, 800, 225); 
 
-                    // Walls
-                    if (getCellType(wx, wz) === 1) {
-                        const w = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 1), wallMat);
-                        w.position.set(wx, 1.25, wz); group.add(w);
+            // 2. Continuous Raycasting
+            const numRays = 800;
+            for(let i=0; i < numRays; i++) {
+                let rayAngle = p.dir - 0.6 + (i / numRays) * 1.2;
+                let rx = p.x, ry = p.y;
+                let vx = Math.cos(rayAngle) * 0.012; 
+                let vy = Math.sin(rayAngle) * 0.012;
+                let dist = 0;
+                
+                while(dist < 15) {
+                    rx += vx; ry += vy; dist += 0.012;
+                    if(getCellType(Math.floor(rx), Math.floor(ry)) === 1) break;
+                }
+                
+                // Perspective Correction (Stops the "shimmering" wall edges)
+                let correctedDist = dist * Math.cos(rayAngle - p.dir);
+                let h = canvas.height / correctedDist;
+                let wallY = (canvas.height - h) / 2;
+
+                if (wallImg.complete) {
+                    // TILING MATH: 4x horizontally
+                    let hitX = rx % 1, hitY = ry % 1;
+                    let texX_raw = (Math.abs(hitX - 0.5) > Math.abs(hitY - 0.5)) ? hitX : hitY;
+                    let texX = (texX_raw * 4 % 1) * wallImg.width;
+                    
+                    // TILING MATH: 4x vertically
+                    let segH = h / 4;
+                    for (let t = 0; t < 4; t++) {
+                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, i, wallY + (t * segH), 1, segH + 1);
                     }
                 }
+                
+                // Depth Fog (Stops the "clashing" in the distance)
+                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(dist / 11, 0.98)})`;
+                ctx.fillRect(i, wallY, 1, h);
             }
-            scene.add(group); return group;
+            requestAnimationFrame(loop);
         }
-
-        // --- 4. CONTROLS ---
-        const keys = {};
-        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-
-        document.getElementById('ui').onclick = function() {
-            renderer.domElement.requestPointerLock();
-            this.style.display = 'none';
-        };
-
-        let yaw = 0, pitch = 0;
-        document.onmousemove = (e) => {
-            if (document.pointerLockElement) {
-                yaw -= e.movementX * 0.002;
-                pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.002));
-                camera.rotation.set(pitch, yaw, 0, 'YXZ');
-            }
-        };
-
-        // --- 5. GAME LOOP ---
-        function animate() {
-            requestAnimationFrame(animate);
-            const move = new THREE.Vector3();
-            if (keys['w']) move.z -= 1; if (keys['s']) move.z += 1;
-            if (keys['a']) move.x -= 1; if (keys['d']) move.x += 1;
-            
-            if (move.length() > 0) {
-                move.applyQuaternion(camera.quaternion);
-                move.y = 0;
-                camera.position.add(move.normalize().multiplyScalar(0.08));
-            }
-
-            const ccx = Math.floor(camera.position.x / 8), ccz = Math.floor(camera.position.z / 8);
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dz = -1; dz <= 1; dz++) {
-                    const k = `${ccx+dx},${ccz+dz}`;
-                    if (!chunks.has(k)) chunks.set(k, createChunk(ccx+dx, ccz+dz));
-                }
-            }
-            renderer.render(scene, camera);
-        }
-        animate();
     </script>
 </body>
 </html>

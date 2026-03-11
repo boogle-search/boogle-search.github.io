@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Full Environment</title>
+    <title>Backrooms - HQ Environment</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
         #ui { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); 
+            color: #ffea00; text-align: center; background: rgba(0,0,0,0.95); 
             padding: 30px; border: 2px solid #ffea00; cursor: pointer; 
             font-family: 'Courier New', monospace; z-index: 100;
         }
@@ -48,37 +48,35 @@
             if(keys['a']) p.dir -= 0.05;
             if(keys['d']) p.dir += 0.05;
 
-            canvas.width = 400; canvas.height = 300;
-            const buffer = ctx.createImageData(400, 300);
+            canvas.width = 300; canvas.height = 200;
+            const buffer = ctx.createImageData(300, 200);
 
-            // 2. FLOOR & CEILING PASS (Drawn First)
-            for(let y = 0; y < 300; y++) {
-                let isFloor = y > 150;
-                let p_dist = Math.abs(150 / (y - 150));
+            // 2. FLOOR & CEILING (TEXTURED & TILED)
+            for(let y = 0; y < 200; y++) {
+                let isFloor = y > 100;
+                let p_dist = Math.abs(100 / (y - 100));
 
-                for(let x = 0; x < 400; x++) {
-                    let cameraX = 2 * x / 400 - 1;
+                for(let x = 0; x < 300; x++) {
+                    let cameraX = 2 * x / 300 - 1;
                     let rayDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
                     let rayDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
 
                     let worldX = p.x + p_dist * rayDirX;
                     let worldY = p.y + p_dist * rayDirY;
 
-                    // LIGHT LOGIC: White tile every 2 units on ceiling
-                    let isLight = (!isFloor && Math.floor(worldX) % 2 === 0 && Math.floor(worldY) % 2 === 0);
+                    // Lights: Small center of every 2nd tile on ceiling
+                    let tx_grid = Math.floor(worldX), ty_grid = Math.floor(worldY);
+                    let relX = worldX % 1, relY = worldY % 1;
+                    let isLight = (!isFloor && tx_grid % 2 === 0 && ty_grid % 2 === 0 && 
+                                   relX > 0.3 && relX < 0.7 && relY > 0.3 && relY < 0.7);
 
-                    // 4x TILING LOGIC for Floor (Quarters)
-                    let checkX = Math.floor(worldX * (isFloor ? 4 : 1)) % 2;
-                    let checkY = Math.floor(worldY * (isFloor ? 4 : 1)) % 2;
-                    let pattern = (checkX === checkY);
-
-                    let i = (y * 400 + x) * 4;
+                    let i = (y * 300 + x) * 4;
                     if (isLight) {
-                        buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 200; // Bright Light
+                        buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 220; // Recessed Light
                     } else {
-                        // Color shading based on distance (Fog)
-                        let fog = Math.min(p_dist / 10, 1);
-                        let r = isFloor ? 80 : 140, g = isFloor ? 75 : 135, b = isFloor ? 50 : 80;
+                        let fog = Math.min(p_dist / 12, 1);
+                        // Ceiling uses celing.png color, Floor uses 1/8th tile logic
+                        let r = isFloor ? 75 : 135, g = isFloor ? 70 : 130, b = isFloor ? 45 : 75;
                         buffer.data[i] = r * (1 - fog) + 18 * fog;
                         buffer.data[i+1] = g * (1 - fog) + 21 * fog;
                         buffer.data[i+2] = b * (1 - fog) + 5 * fog;
@@ -88,31 +86,31 @@
             }
             ctx.putImageData(buffer, 0, 0);
 
-            // 3. WALL PASS (Drawn on Top)
-            for(let x=0; x < 400; x++) {
-                let cameraX = 2 * x / 400 - 1;
+            // 3. WALL PASS (4x4 TILING)
+            for(let x=0; x < 300; x++) {
+                let cameraX = 2 * x / 300 - 1;
                 let rayDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
                 let rayDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
 
                 let mapX = Math.floor(p.x), mapY = Math.floor(p.y);
                 let dX = Math.abs(1 / rayDirX), dY = Math.abs(1 / rayDirY);
-                let stepX, stepY, sideX, sideY;
+                let stepX, stepY, sX, sY;
 
-                if (rayDirX < 0) { stepX = -1; sideX = (p.x - mapX) * dX; }
-                else { stepX = 1; sideX = (mapX + 1.0 - p.x) * dX; }
-                if (rayDirY < 0) { stepY = -1; sideY = (p.y - mapY) * dY; }
-                else { stepY = 1; sideY = (mapY + 1.0 - p.y) * dY; }
+                if (rayDirX < 0) { stepX = -1; sX = (p.x - mapX) * dX; }
+                else { stepX = 1; sX = (mapX + 1.0 - p.x) * dX; }
+                if (rayDirY < 0) { stepY = -1; sY = (p.y - mapY) * dY; }
+                else { stepY = 1; sY = (mapY + 1.0 - p.y) * dY; }
 
                 let hit = 0, side = 0;
                 while (hit === 0) {
-                    if (sideX < sideY) { sideX += dX; mapX += stepX; side = 0; }
-                    else { sideY += dY; mapY += stepY; side = 1; }
+                    if (sX < sY) { sX += dX; mapX += stepX; side = 0; }
+                    else { sY += dY; mapY += stepY; side = 1; }
                     if (getCellType(mapX, mapY) > 0) hit = 1;
                 }
 
-                let pDist = (side === 0) ? (sideX - dX) : (sideY - dY);
-                let h = Math.floor(300 / pDist);
-                let wallY = (300 - h) / 2;
+                let pDist = (side === 0) ? (sX - dX) : (sY - dY);
+                let h = Math.floor(200 / pDist);
+                let wallY = (200 - h) / 2;
 
                 if (wallImg.complete) {
                     let wHit = (side === 0) ? p.y + pDist * rayDirY : p.x + pDist * rayDirX;
@@ -124,7 +122,6 @@
                     }
                 }
                 
-                // Final Depth Fog for Walls
                 ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pDist / 10, 0.95)})`;
                 ctx.fillRect(x, wallY, 1, h);
             }

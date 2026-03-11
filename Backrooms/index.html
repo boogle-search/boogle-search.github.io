@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Steady Raycaster</title>
+    <title>Backrooms - Smooth Floor Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
-        canvas { display: block; width: 100vw; height: 100vh; image-rendering: auto; }
-        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: #000; padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; }
+        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: #000; padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
     </style>
 </head>
 <body>
@@ -16,11 +16,13 @@
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
+        
+        // 1. Assets
         const wallImg = new Image(); wallImg.src = 'walls.png';
         const floorImg = new Image(); floorImg.src = 'floor.png';
         const ceilImg = new Image(); ceilImg.src = 'celing.png';
 
-        function getCellType(x, y) {
+        function getCell(x, y) {
             if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
             const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
             return (n - Math.floor(n)) > 0.85 ? 1 : 0;
@@ -36,53 +38,70 @@
         }
 
         function loop() {
-            if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
-            if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
+            // Movement Logic
+            const speed = 0.06;
+            if(keys['w']) { p.x += Math.cos(p.dir)*speed; p.y += Math.sin(p.dir)*speed; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*speed; p.y -= Math.sin(p.dir)*speed; }
             if(keys['a']) p.dir -= 0.05;
             if(keys['d']) p.dir += 0.05;
 
-            // HIGHER RESOLUTION = LESS FLASHING
-            canvas.width = 800; canvas.height = 450;
-            
-            // 1. Draw Ceiling and Floor (Simple colors to stop the flashing)
-            ctx.fillStyle = "#888844"; ctx.fillRect(0, 0, 800, 225); 
-            ctx.fillStyle = "#444444"; ctx.fillRect(0, 225, 800, 225); 
+            canvas.width = 400; canvas.height = 300;
 
-            // 2. Continuous Raycasting
-            const numRays = 800;
-            for(let i=0; i < numRays; i++) {
-                let rayAngle = p.dir - 0.6 + (i / numRays) * 1.2;
-                let rx = p.x, ry = p.y;
-                let vx = Math.cos(rayAngle) * 0.012; 
-                let vy = Math.sin(rayAngle) * 0.012;
-                let dist = 0;
-                
-                while(dist < 15) {
-                    rx += vx; ry += vy; dist += 0.012;
-                    if(getCellType(Math.floor(rx), Math.floor(ry)) === 1) break;
+            // --- 2. THE "NO-FLASH" FLOOR & CEILING ---
+            // We use patterns and move them with the player to keep them locked
+            const fPat = ctx.createPattern(floorImg, 'repeat');
+            const cPat = ctx.createPattern(ceilImg, 'repeat');
+
+            // Draw Ceiling
+            ctx.save();
+            ctx.translate(200 - p.x * 50, 0); // Offset based on player position
+            ctx.fillStyle = cPat;
+            ctx.fillRect(-2000, 0, 4000, 150);
+            ctx.restore();
+
+            // Draw Floor
+            ctx.save();
+            ctx.translate(200 - p.x * 100, 0); // 1/8th-style tiling offset
+            ctx.scale(0.125, 0.125); // Scale down for 1/8th detail
+            ctx.fillStyle = fPat;
+            ctx.fillRect(-16000, 1200, 32000, 1200); 
+            ctx.restore();
+
+            // --- 3. DDA WALLS (4x4 Tiling) ---
+            for(let x=0; x < 400; x++) {
+                let cameraX = 2 * x / 400 - 1;
+                let rDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
+                let rDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
+                let mapX = Math.floor(p.x), mapY = Math.floor(p.y);
+                let dX = Math.abs(1 / rDirX), dY = Math.abs(1 / rDirY);
+                let stepX, stepY, sX, sY;
+
+                if (rDirX < 0) { stepX = -1; sX = (p.x - mapX) * dX; }
+                else { stepX = 1; sX = (mapX + 1.0 - p.x) * dX; }
+                if (rDirY < 0) { stepY = -1; sY = (p.y - mapY) * dY; }
+                else { stepY = 1; sY = (mapY + 1.0 - p.y) * dY; }
+
+                let hit = 0, side = 0;
+                while (hit === 0) {
+                    if (sX < sY) { sX += dX; mapX += stepX; side = 0; }
+                    else { sY += dY; mapY += stepY; side = 1; }
+                    if (getCell(mapX, mapY) > 0) hit = 1;
                 }
-                
-                // Perspective Correction (Stops the "shimmering" wall edges)
-                let correctedDist = dist * Math.cos(rayAngle - p.dir);
-                let h = canvas.height / correctedDist;
-                let wallY = (canvas.height - h) / 2;
+
+                let pDist = (side === 0) ? (sX - dX) : (sideY - dY);
+                let h = Math.floor(300 / pDist);
+                let wallY = (300 - h) / 2;
 
                 if (wallImg.complete) {
-                    // TILING MATH: 4x horizontally
-                    let hitX = rx % 1, hitY = ry % 1;
-                    let texX_raw = (Math.abs(hitX - 0.5) > Math.abs(hitY - 0.5)) ? hitX : hitY;
-                    let texX = (texX_raw * 4 % 1) * wallImg.width;
-                    
-                    // TILING MATH: 4x vertically
-                    let segH = h / 4;
+                    let wH = (side === 0) ? p.y + pDist * rDirY : p.x + pDist * rDirX;
+                    wH -= Math.floor(wH);
+                    let texX = Math.floor((wH * 4 % 1) * wallImg.width);
                     for (let t = 0; t < 4; t++) {
-                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, i, wallY + (t * segH), 1, segH + 1);
+                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY + (t * h/4), 1, h/4 + 1);
                     }
                 }
-                
-                // Depth Fog (Stops the "clashing" in the distance)
-                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(dist / 11, 0.98)})`;
-                ctx.fillRect(i, wallY, 1, h);
+                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pDist / 10, 0.95)})`;
+                ctx.fillRect(x, wallY, 1, h);
             }
             requestAnimationFrame(loop);
         }

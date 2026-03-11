@@ -1,31 +1,42 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>Backrooms - Reality Fixed</title>
+<title>Backrooms</title>
+
 <style>
-body { margin:0; overflow:hidden; background:#121505; }
-canvas { display:block; width:100vw; height:100vh; image-rendering:pixelated; }
-#ui {
+body{
+margin:0;
+overflow:hidden;
+background:#121505;
+}
+
+canvas{
+width:100vw;
+height:100vh;
+image-rendering:pixelated;
+display:block;
+}
+
+#ui{
 position:absolute;
 top:50%;
 left:50%;
 transform:translate(-50%,-50%);
-color:#ffea00;
-text-align:center;
-background:rgba(0,0,0,0.95);
-padding:30px;
-border:2px solid #ffea00;
-cursor:pointer;
+background:black;
+color:#ffee55;
 font-family:monospace;
-z-index:100;
+padding:30px;
+border:2px solid #ffee55;
+cursor:pointer;
+text-align:center;
 }
 </style>
 </head>
 
 <body>
 
-<div id="ui" onclick="this.style.display='none'; start()">
+<div id="ui" onclick="start();this.style.display='none'">
 <h1>THE BACKROOMS</h1>
 <p>CLICK TO START</p>
 </div>
@@ -34,43 +45,95 @@ z-index:100;
 
 <script>
 
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-
-const wallImg = new Image();
-wallImg.src = "walls.png";
-
-const floorImg = new Image();
-floorImg.src = "floor.png";
-
-const ceilImg = new Image();
-ceilImg.src = "celing.png";
-
-function getCell(x,y){
-if(Math.abs(x)<2 && Math.abs(y)<2) return 0;
-
-const n = Math.sin(x*12.98 + y*78.23) * 43758;
-return (n-Math.floor(n))>0.85?1:0;
-}
-
-let p={x:2.5,y:2.5,dir:0};
-const keys={};
-
-function start(){
-window.onkeydown=e=>keys[e.key.toLowerCase()]=true;
-window.onkeyup=e=>keys[e.key.toLowerCase()]=false;
-loop();
-}
-
-function loop(){
-
-if(keys['w']){p.x+=Math.cos(p.dir)*0.06;p.y+=Math.sin(p.dir)*0.06;}
-if(keys['s']){p.x-=Math.cos(p.dir)*0.06;p.y-=Math.sin(p.dir)*0.06;}
-if(keys['a'])p.dir-=0.05;
-if(keys['d'])p.dir+=0.05;
+const canvas=document.getElementById("c");
+const ctx=canvas.getContext("2d");
 
 canvas.width=400;
 canvas.height=300;
+
+const wallImg=new Image();
+wallImg.src="walls.png";
+
+const floorImg=new Image();
+floorImg.src="floor.png";
+
+const ceilImg=new Image();
+ceilImg.src="celing.png";
+
+
+let player={
+x:3,
+y:3,
+dir:0
+};
+
+const keys={};
+
+function start(){
+
+window.onkeydown=e=>keys[e.key.toLowerCase()]=true;
+window.onkeyup=e=>keys[e.key.toLowerCase()]=false;
+
+loop();
+
+}
+
+
+/* BACKROOMS STYLE MAP */
+
+function getCell(x,y){
+
+if(Math.abs(x)<4 && Math.abs(y)<4) return 0;
+
+const size=8;
+
+const gx=Math.floor(x/size);
+const gy=Math.floor(y/size);
+
+const n=Math.sin(gx*54.3+gy*12.7)*43758;
+
+if((n-Math.floor(n))>0.7){
+
+if(x%size===0 || y%size===0)
+return 1;
+
+}
+
+return 0;
+
+}
+
+
+function loop(){
+
+movePlayer();
+
+drawWorld();
+
+requestAnimationFrame(loop);
+
+}
+
+
+function movePlayer(){
+
+if(keys["w"]){
+player.x+=Math.cos(player.dir)*0.06;
+player.y+=Math.sin(player.dir)*0.06;
+}
+
+if(keys["s"]){
+player.x-=Math.cos(player.dir)*0.06;
+player.y-=Math.sin(player.dir)*0.06;
+}
+
+if(keys["a"]) player.dir-=0.05;
+if(keys["d"]) player.dir+=0.05;
+
+}
+
+
+function drawWorld(){
 
 ctx.fillStyle="#888844";
 ctx.fillRect(0,0,400,150);
@@ -78,56 +141,87 @@ ctx.fillRect(0,0,400,150);
 ctx.fillStyle="#444";
 ctx.fillRect(0,150,400,150);
 
-/* RAYCAST WALLS */
+
+/* RAYCAST */
 
 for(let x=0;x<400;x++){
 
 let cameraX=2*x/400-1;
 
-let rDX=Math.cos(p.dir)+Math.sin(p.dir)*cameraX*-0.66;
-let rDY=Math.sin(p.dir)-Math.cos(p.dir)*cameraX*-0.66;
+let rayDirX=Math.cos(player.dir)+Math.sin(player.dir)*cameraX*-0.66;
+let rayDirY=Math.sin(player.dir)-Math.cos(player.dir)*cameraX*-0.66;
 
-let mX=Math.floor(p.x);
-let mY=Math.floor(p.y);
+let mapX=Math.floor(player.x);
+let mapY=Math.floor(player.y);
 
-let dX=Math.abs(1/rDX);
-let dY=Math.abs(1/rDY);
+let deltaX=Math.abs(1/rayDirX);
+let deltaY=Math.abs(1/rayDirY);
 
-let stX,stY,sX,sY;
+let stepX,stepY;
+let sideDistX,sideDistY;
 
-if(rDX<0){stX=-1;sX=(p.x-mX)*dX;}
-else{stX=1;sX=(mX+1-p.x)*dX;}
-
-if(rDY<0){stY=-1;sY=(p.y-mY)*dY;}
-else{stY=1;sY=(mY+1-p.y)*dY;}
-
-let hit=0,side=0;
-
-while(hit===0){
-if(sX<sY){sX+=dX;mX+=stX;side=0;}
-else{sY+=dY;mY+=stY;side=1;}
-if(getCell(mX,mY)>0)hit=1;
+if(rayDirX<0){
+stepX=-1;
+sideDistX=(player.x-mapX)*deltaX;
+}else{
+stepX=1;
+sideDistX=(mapX+1-player.x)*deltaX;
 }
 
-let pD=(side===0)?(sX-dX):(sY-dY);
+if(rayDirY<0){
+stepY=-1;
+sideDistY=(player.y-mapY)*deltaY;
+}else{
+stepY=1;
+sideDistY=(mapY+1-player.y)*deltaY;
+}
 
-let h=Math.floor(300/pD);
-let wallY=(300-h)/2;
+let hit=0;
+let side=0;
+
+while(hit===0){
+
+if(sideDistX<sideDistY){
+sideDistX+=deltaX;
+mapX+=stepX;
+side=0;
+}else{
+sideDistY+=deltaY;
+mapY+=stepY;
+side=1;
+}
+
+if(getCell(mapX,mapY)>0)
+hit=1;
+
+}
+
+let perpDist=(side===0)?(sideDistX-deltaX):(sideDistY-deltaY);
+
+let lineHeight=Math.floor(300/perpDist);
+
+let drawStart=(300-lineHeight)/2;
+
+
+/* TEXTURE */
 
 if(wallImg.complete){
 
-let hitP=(side===0)?p.y+pD*rDY:p.x+pD*rDX;
+let wallX=(side===0)
+?player.y+perpDist*rayDirY
+:player.x+perpDist*rayDirX;
 
-/* FIXED TEXTURE WRAP */
+wallX-=Math.floor(wallX);
 
-let texX=Math.floor(((hitP%1+1)%1)*wallImg.width);
+let texX=Math.floor(wallX*wallImg.width);
 
 ctx.fillStyle="#000";
-ctx.fillRect(x,wallY,1,h);
+ctx.fillRect(x,drawStart,1,lineHeight);
 
-/* 4x BLOCK WALL STACK */
 
-for(let t=0;t<4;t++){
+/* 4 BLOCK STACK */
+
+for(let i=0;i<4;i++){
 
 ctx.drawImage(
 wallImg,
@@ -136,18 +230,19 @@ texX,
 1,
 wallImg.height,
 x,
-wallY+(t*h/4),
+drawStart+(i*lineHeight/4),
 1,
-h/4+1
+lineHeight/4+1
 );
 
 }
 
 }
 
+
 /* FOG */
 
-let fog=Math.min(pD/12,0.98);
+let fog=Math.min(perpDist/12,0.95);
 
 ctx.globalAlpha=fog;
 ctx.fillStyle="#121505";
@@ -156,18 +251,19 @@ ctx.globalAlpha=1;
 
 }
 
-/* LIGHTS */
 
-for(let lx=0;lx<400;lx+=100){
+/* CEILING LIGHTS */
+
+for(let i=0;i<400;i+=100){
+
 ctx.fillStyle="rgba(255,255,230,0.4)";
-ctx.fillRect(lx+40,50,20,10);
+ctx.fillRect(i+40,60,20,10);
+
 }
 
-requestAnimationFrame(loop);
 }
 
 </script>
 
 </body>
 </html>
-

@@ -2,128 +2,120 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Backrooms - Chrome Edition</title>
+    <title>Backrooms - GitHub Fixed</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #121505; font-family: 'Courier New', Courier, monospace; }
+        body { margin: 0; overflow: hidden; background-color: #121505; font-family: monospace; }
         canvas { display: block; width: 100vw; height: 100vh; }
         #ui {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #ffea00; text-align: center; background: rgba(0,0,0,0.9);
-            padding: 30px; border: 2px solid #ffea00; cursor: pointer; z-index: 100;
+            color: #ffea00; text-align: center; background: rgba(0,0,0,0.95);
+            padding: 40px; border: 3px solid #ffea00; cursor: pointer; z-index: 1000;
         }
     </style>
 </head>
 <body>
 
-    <div id="ui">
+    <div id="ui" onclick="startGame()">
         <h1>THE BACKROOMS</h1>
-        <p>CLICK TO START</p>
-        <small>WASD to Move | Mouse to Look</small>
+        <p style="font-size: 24px;">>>> CLICK HERE TO START <<<</p>
+        <p>WASD to Move | Mouse to Look</p>
     </div>
 
-    <!-- Use a reliable Google-friendly engine link -->
     <script src="https://cdnjs.cloudflare.com"></script>
 
     <script>
-        // --- 1. INITIALIZE ENGINE ---
         const ui = document.getElementById('ui');
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x121505);
-        scene.fog = new THREE.FogExp2(0x121505, 0.15);
+        let gameStarted = false;
 
-        const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 1.6, 0);
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        // --- 2. TEXTURES (GITHUB COMPATIBLE) ---
-        const loader = new THREE.TextureLoader();
-        
-        // Ensure these match your filenames exactly (Case Sensitive!)
-        const wallTex = loader.load('walls.png');
-        const floorTex = loader.load('floor.png');
-        const ceilTex = loader.load('celing.png'); // Matching your spelling
-
-        [wallTex, floorTex, ceilTex].forEach(t => {
-            t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        });
-
-        const wallMat = new THREE.MeshBasicMaterial({ map: wallTex });
-        const floorMat = new THREE.MeshBasicMaterial({ map: floorTex, color: 0x666666 });
-        const ceilMat = new THREE.MeshBasicMaterial({ map: ceilTex, color: 0xffffaa });
-
-        // --- 3. GENERATION ---
-        const chunks = new Map();
-        function getCellType(x, z) {
-            if (Math.abs(x) < 2 && Math.abs(z) < 2) return 0; // Spawn safety
-            const n = Math.sin(x * 12.9 + z * 78.2) * 43758;
-            return (n - Math.floor(n)) > 0.85 ? 1 : 0;
+        function startGame() {
+            if (gameStarted) return;
+            gameStarted = true;
+            
+            // Force the box to vanish
+            ui.style.display = 'none';
+            
+            // Try to lock mouse (some browsers need a second click)
+            document.body.requestPointerLock();
+            
+            console.log("Game Logic Starting...");
+            initGame();
         }
 
-        function createChunk(cx, cz) {
-            const group = new THREE.Group();
-            for (let x = 0; x < 8; x++) {
-                for (let z = 0; z < 8; z++) {
-                    const wx = cx * 8 + x, wz = cz * 8 + z;
-                    const f = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMat);
-                    f.rotation.x = -Math.PI/2; f.position.set(wx, 0, wz); group.add(f);
-                    const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ceilMat);
-                    c.rotation.x = Math.PI/2; c.position.set(wx, 2.5, wz); group.add(c);
-                    if (getCellType(wx, wz) === 1) {
-                        const w = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 1), wallMat);
-                        w.position.set(wx, 1.25, wz); group.add(w);
+        function initGame() {
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x121505);
+            scene.fog = new THREE.FogExp2(0x121505, 0.15);
+
+            const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 0);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const loader = new THREE.TextureLoader();
+            // Using './' ensures it looks inside your "Backrooms" folder on GitHub
+            const wallTex = loader.load('./walls.png');
+            const floorTex = loader.load('./floor.png');
+            const ceilTex = loader.load('./celing.png');
+
+            [wallTex, floorTex, ceilTex].forEach(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; });
+
+            const wallMat = new THREE.MeshBasicMaterial({ map: wallTex, color: 0xcccc00 });
+            const floorMat = new THREE.MeshBasicMaterial({ map: floorTex, color: 0x666666 });
+            const ceilMat = new THREE.MeshBasicMaterial({ map: ceilTex, color: 0xffffaa });
+
+            const chunks = new Map();
+            function createChunk(cx, cz) {
+                const group = new THREE.Group();
+                for (let x = 0; x < 8; x++) {
+                    for (let z = 0; z < 8; z++) {
+                        const wx = cx * 8 + x, wz = cz * 8 + z;
+                        const f = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMat);
+                        f.rotation.x = -Math.PI/2; f.position.set(wx, 0, wz); group.add(f);
+                        const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ceilMat);
+                        c.rotation.x = Math.PI/2; c.position.set(wx, 2.5, wz); group.add(c);
+                        if (Math.sin(wx * 12.9 + wz * 78.2) > 0.8 && (Math.abs(wx) > 2 || Math.abs(wz) > 2)) {
+                            const w = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 1), wallMat);
+                            w.position.set(wx, 1.25, wz); group.add(w);
+                        }
                     }
                 }
-            }
-            scene.add(group);
-            return group;
-        }
-
-        // --- 4. INPUT & CLICK TO START ---
-        const keys = {};
-        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-
-        ui.onclick = function() {
-            renderer.domElement.requestPointerLock();
-            ui.style.display = 'none';
-        };
-
-        let yaw = 0, pitch = 0;
-        document.onmousemove = (e) => {
-            if (document.pointerLockElement) {
-                yaw -= e.movementX * 0.002;
-                pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.002));
-                camera.rotation.set(pitch, yaw, 0, 'YXZ');
-            }
-        };
-
-        // --- 5. GAME LOOP ---
-        function animate() {
-            requestAnimationFrame(animate);
-            const move = new THREE.Vector3();
-            if (keys['w']) move.z -= 1; if (keys['s']) move.z += 1;
-            if (keys['a']) move.x -= 1; if (keys['d']) move.x += 1;
-            
-            if (move.length() > 0) {
-                move.applyQuaternion(camera.quaternion);
-                move.y = 0;
-                camera.position.add(move.normalize().multiplyScalar(0.07));
+                scene.add(group);
+                return group;
             }
 
-            const ccx = Math.floor(camera.position.x / 8), ccz = Math.floor(camera.position.z / 8);
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dz = -1; dz <= 1; dz++) {
-                    const k = `${ccx+dx},${ccz+dz}`;
-                    if (!chunks.has(k)) chunks.set(k, createChunk(ccx+dx, ccz+dz));
+            const keys = {};
+            window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+            window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+
+            let yaw = 0;
+            document.onmousemove = (e) => {
+                if (document.pointerLockElement) {
+                    yaw -= e.movementX * 0.002;
+                    camera.rotation.set(0, yaw, 0, 'YXZ');
                 }
+            };
+
+            function animate() {
+                requestAnimationFrame(animate);
+                const move = new THREE.Vector3();
+                if (keys['w']) move.z -= 0.07; if (keys['s']) move.z += 0.07;
+                if (keys['a']) move.x -= 0.07; if (keys['d']) move.x += 0.07;
+                camera.position.add(move.applyQuaternion(camera.quaternion));
+                camera.position.y = 1.6;
+
+                const ccx = Math.floor(camera.position.x / 8), ccz = Math.floor(camera.position.z / 8);
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dz = -1; dz <= 1; dz++) {
+                        const k = `${ccx+dx},${ccz+dz}`;
+                        if (!chunks.has(k)) chunks.set(k, createChunk(ccx+dx, ccz+dz));
+                    }
+                }
+                renderer.render(scene, camera);
             }
-            renderer.render(scene, camera);
+            animate();
         }
-        animate();
     </script>
 </body>
 </html>

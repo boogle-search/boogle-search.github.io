@@ -2,29 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - HQ Environment</title>
+    <title>Backrooms - Full Texture Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            color: #ffea00; text-align: center; background: rgba(0,0,0,0.95); 
-            padding: 30px; border: 2px solid #ffea00; cursor: pointer; 
-            font-family: 'Courier New', monospace; z-index: 100;
-        }
+        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.9); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
     </style>
 </head>
 <body>
-    <div id="ui" onclick="this.style.display='none'; start()">
-        <h1>THE BACKROOMS</h1>
-        <p>CLICK TO ENTER</p>
-    </div>
+    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
     <canvas id="c"></canvas>
 
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
+        
+        // 1. ASSET LOADING
         const wallImg = new Image(); wallImg.src = 'walls.png';
+        const floorImg = new Image(); floorImg.src = 'floor.png';
+        const ceilImg = new Image(); ceilImg.src = 'celing.png';
+
+        // Hidden canvases to "read" image data
+        const fCan = document.createElement('canvas'), fCtx = fCan.getContext('2d');
+        const cCan = document.createElement('canvas'), cCtx = cCan.getContext('2d');
 
         function getCellType(x, y) {
             if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
@@ -36,13 +36,18 @@
         const keys = {};
 
         function start() {
+            // Prepare hidden canvases once images load
+            fCan.width = fCan.height = 64; fCtx.drawImage(floorImg, 0, 0, 64, 64);
+            cCan.width = cCan.height = 64; cCtx.drawImage(ceilImg, 0, 0, 64, 64);
+            const fData = fCtx.getImageData(0, 0, 64, 64).data;
+            const cData = cCtx.getImageData(0, 0, 64, 64).data;
+
             window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
             window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-            loop();
+            loop(fData, cData);
         }
 
-        function loop() {
-            // 1. MOVEMENT
+        function loop(fData, cData) {
             if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
             if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
             if(keys['a']) p.dir -= 0.05;
@@ -51,7 +56,7 @@
             canvas.width = 300; canvas.height = 200;
             const buffer = ctx.createImageData(300, 200);
 
-            // 2. FLOOR & CEILING (TEXTURED & TILED)
+            // --- 2. TEXTURED FLOOR & CEILING ---
             for(let y = 0; y < 200; y++) {
                 let isFloor = y > 100;
                 let p_dist = Math.abs(100 / (y - 100));
@@ -64,19 +69,25 @@
                     let worldX = p.x + p_dist * rayDirX;
                     let worldY = p.y + p_dist * rayDirY;
 
-                    // Lights: Small center of every 2nd tile on ceiling
-                    let tx_grid = Math.floor(worldX), ty_grid = Math.floor(worldY);
-                    let relX = worldX % 1, relY = worldY % 1;
-                    let isLight = (!isFloor && tx_grid % 2 === 0 && ty_grid % 2 === 0 && 
-                                   relX > 0.3 && relX < 0.7 && relY > 0.3 && relY < 0.7);
+                    // Smaller Ceiling Lights Logic
+                    let tx_g = Math.floor(worldX), ty_g = Math.floor(worldY);
+                    let rx = worldX % 1, ry = worldY % 1;
+                    let isLight = (!isFloor && tx_g % 2 === 0 && ty_g % 2 === 0 && rx > 0.35 && rx < 0.65 && ry > 0.35 && ry < 0.65);
+
+                    // TILING: 8x for Floor, 1x for Ceiling
+                    let scale = isFloor ? 8 : 1;
+                    let tx = Math.floor((worldX * scale % 1) * 64);
+                    let ty = Math.floor((worldY * scale % 1) * 64);
+                    let texI = (ty * 64 + tx) * 4;
 
                     let i = (y * 300 + x) * 4;
                     if (isLight) {
-                        buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 220; // Recessed Light
+                        buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 210;
                     } else {
                         let fog = Math.min(p_dist / 12, 1);
-                        // Ceiling uses celing.png color, Floor uses 1/8th tile logic
-                        let r = isFloor ? 75 : 135, g = isFloor ? 70 : 130, b = isFloor ? 45 : 75;
+                        let r = isFloor ? fData[texI] : cData[texI];
+                        let g = isFloor ? fData[texI+1] : cData[texI+1];
+                        let b = isFloor ? fData[texI+2] : cData[texI+2];
                         buffer.data[i] = r * (1 - fog) + 18 * fog;
                         buffer.data[i+1] = g * (1 - fog) + 21 * fog;
                         buffer.data[i+2] = b * (1 - fog) + 5 * fog;
@@ -86,12 +97,11 @@
             }
             ctx.putImageData(buffer, 0, 0);
 
-            // 3. WALL PASS (4x4 TILING)
+            // --- 3. DDA WALLS ---
             for(let x=0; x < 300; x++) {
                 let cameraX = 2 * x / 300 - 1;
                 let rayDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
                 let rayDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
-
                 let mapX = Math.floor(p.x), mapY = Math.floor(p.y);
                 let dX = Math.abs(1 / rayDirX), dY = Math.abs(1 / rayDirY);
                 let stepX, stepY, sX, sY;
@@ -113,19 +123,17 @@
                 let wallY = (200 - h) / 2;
 
                 if (wallImg.complete) {
-                    let wHit = (side === 0) ? p.y + pDist * rayDirY : p.x + pDist * rayDirX;
-                    wHit -= Math.floor(wHit);
-                    let texX = Math.floor((wHit * 4 % 1) * wallImg.width);
-                    let tilesV = 4, segH = h / tilesV;
-                    for (let t = 0; t < tilesV; t++) {
-                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY + (t * segH), 1, segH + 1);
+                    let wH = (side === 0) ? p.y + pDist * rayDirY : p.x + pDist * rayDirX;
+                    wH -= Math.floor(wH);
+                    let texX = Math.floor((wH * 4 % 1) * wallImg.width);
+                    for (let t = 0; t < 4; t++) {
+                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY + (t * h/4), 1, h/4 + 1);
                     }
                 }
-                
                 ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pDist / 10, 0.95)})`;
                 ctx.fillRect(x, wallY, 1, h);
             }
-            requestAnimationFrame(loop);
+            requestAnimationFrame(() => loop(cData, fData));
         }
     </script>
 </body>

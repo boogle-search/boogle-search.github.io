@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - 4x4 Exact Tiling</title>
+    <title>Backrooms - Perfect 4x4 Tiling</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
@@ -24,7 +24,7 @@
             return (n - Math.floor(n)) > 0.85 ? 1 : 0;
         }
         
-        let p = { x: 0.5, y: 0.5, dir: 0 };
+        let p = { x: 2.5, y: 2.5, dir: 0 };
         const keys = {};
 
         function start() {
@@ -34,54 +34,56 @@
         }
 
         function loop() {
-            if(keys['w']) { p.x += Math.cos(p.dir)*0.05; p.y += Math.sin(p.dir)*0.05; }
-            if(keys['s']) { p.x -= Math.cos(p.dir)*0.05; p.y -= Math.sin(p.dir)*0.05; }
-            if(keys['a']) p.dir -= 0.04;
-            if(keys['d']) p.dir += 0.04;
+            if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
+            if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
+            if(keys['a']) p.dir -= 0.05;
+            if(keys['d']) p.dir += 0.05;
 
             canvas.width = 600; canvas.height = 400;
             ctx.fillStyle = "#1e210d"; ctx.fillRect(0, 0, 600, 200); 
             ctx.fillStyle = "#333333"; ctx.fillRect(0, 200, 600, 200); 
 
-            for(let i=0; i < 600; i++) {
-                let rayAngle = p.dir - 0.6 + (i / 600) * 1.2;
-                let rx = p.x, ry = p.y;
-                let vx = Math.cos(rayAngle) * 0.01;
-                let vy = Math.sin(rayAngle) * 0.01;
-                let dist = 0;
-                let side = 0; // 0 for X-side, 1 for Y-side
-                
-                while(dist < 12) {
-                    let nextX = rx + vx;
-                    let nextY = ry + vy;
-                    dist += 0.01;
-                    
-                    // Check if we hit a wall and which side we hit
-                    if(getCellType(Math.floor(nextX), Math.floor(ry)) === 1) { side = 0; rx = nextX; break; }
-                    if(getCellType(Math.floor(rx), Math.floor(nextY)) === 1) { side = 1; ry = nextY; break; }
-                    
-                    rx = nextX; ry = nextY;
+            for(let x=0; x < 600; x++) {
+                let cameraX = 2 * x / 600 - 1;
+                let rayDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
+                let rayDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
+
+                let mapX = Math.floor(p.x), mapY = Math.floor(p.y);
+                let deltaDistX = Math.abs(1 / rayDirX), deltaDistY = Math.abs(1 / rayDirY);
+                let stepX, stepY, sideDistX, sideDistY;
+
+                if (rayDirX < 0) { stepX = -1; sideDistX = (p.x - mapX) * deltaDistX; }
+                else { stepX = 1; sideDistX = (mapX + 1.0 - p.x) * deltaDistX; }
+                if (rayDirY < 0) { stepY = -1; sideDistY = (p.y - mapY) * deltaDistY; }
+                else { stepY = 1; sideDistY = (mapY + 1.0 - p.y) * deltaDistY; }
+
+                let hit = 0, side = 0;
+                while (hit === 0) {
+                    if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; side = 0; }
+                    else { sideDistY += deltaDistY; mapY += stepY; side = 1; }
+                    if (getCellType(mapX, mapY) > 0) hit = 1;
                 }
-                
-                let h = canvas.height / (dist * Math.cos(rayAngle - p.dir));
+
+                let perpWallDist = (side === 0) ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY);
+                let h = Math.floor(canvas.height / perpWallDist);
                 let wallY = (canvas.height - h) / 2;
 
                 if (wallImg.complete) {
-                    // THE FIX: Correct UV mapping for BOTH sides
-                    let texX_raw = (side === 0) ? (ry % 1) : (rx % 1);
+                    let wallX = (side === 0) ? p.y + perpWallDist * rayDirY : p.x + perpWallDist * rayDirX;
+                    wallX -= Math.floor(wallX);
                     
-                    // Multiply by 4 for the 4x horizontal tiling
-                    let texX = (texX_raw * 4 % 1) * wallImg.width;
-                    
-                    let tilesV = 4; // 4x vertical tiling
-                    let segH = h / tilesV;
+                    // THE 4x4 FIXED MATH
+                    let texX = Math.floor((wallX * 4 % 1) * wallImg.width);
+                    let tilesV = 4, segH = h / tilesV;
+
                     for (let t = 0; t < tilesV; t++) {
-                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, i, wallY + (t * segH), 1, segH + 1);
+                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY + (t * segH), 1, segH + 1);
                     }
                 }
                 
-                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(dist / 9, 0.95)})`;
-                ctx.fillRect(i, wallY, 1, h);
+                let fog = Math.min(perpWallDist / 10, 0.95);
+                ctx.fillStyle = `rgba(18, 21, 5, ${fog})`;
+                ctx.fillRect(x, wallY, 1, h);
             }
             requestAnimationFrame(loop);
         }

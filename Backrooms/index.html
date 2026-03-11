@@ -10,50 +10,60 @@
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             color: #ffea00; text-align: center; background: #000;
             padding: 40px; border: 3px solid #ffea00; cursor: pointer; z-index: 1000;
+            font-family: 'Courier New', monospace;
         }
     </style>
 </head>
 <body>
-    <div id="ui" onclick="this.style.display='none'; init()"><h1>THE BACKROOMS</h1><p>CLICK TO START</p></div>
+    <div id="ui" onclick="init()">
+        <h1>THE BACKROOMS</h1>
+        <p>>>> CLICK TO START <<<</p>
+    </div>
 
-    <script src="https://cdnjs.cloudflare.com"></script>
+    <!-- More reliable link for Chrome/Opera -->
+    <script src="https://ajax.googleapis.com"></script>
 
     <script>
         function init() {
+            // Remove UI immediately
+            document.getElementById('ui').style.display = 'none';
+
             const scene = new THREE.Scene();
             scene.background = new THREE.Color(0x121505);
-            scene.fog = new THREE.FogExp2(0x121505, 0.1); // Thinner fog so you can see further
+            scene.fog = new THREE.FogExp2(0x121505, 0.1); // Thinner fog to see clearly
 
             const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0.5, 1.6, 0.5);
 
-            const renderer = new THREE.WebGLRenderer();
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // EMERGENCY COLORS (In case images fail)
-            const wallMat = new THREE.MeshBasicMaterial({ color: 0xcccc00 }); // YELLOW
-            const floorMat = new THREE.MeshBasicMaterial({ color: 0x444444 }); // GREY
-            const ceilMat = new THREE.MeshBasicMaterial({ color: 0x888844 }); // TAN
+            // EMERGENCY COLORS (If images fail, you see Yellow/Grey)
+            const wallMat = new THREE.MeshBasicMaterial({ color: 0xcccc00 });
+            const floorMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
+            const ceilMat = new THREE.MeshBasicMaterial({ color: 0x888844 });
 
             const loader = new THREE.TextureLoader();
-            // This tries to load images but won't crash if they are missing
-            loader.load('walls.png', (t) => { wallMat.map = t; wallMat.needsUpdate = true; });
-            loader.load('floor.png', (t) => { floorMat.map = t; floorMat.needsUpdate = true; });
-            loader.load('celing.png', (t) => { ceilMat.map = t; ceilMat.needsUpdate = true; });
+            // Try loading your images relative to the current folder
+            loader.load('./walls.png', (t) => { wallMat.map = t; wallMat.needsUpdate = true; });
+            loader.load('./floor.png', (t) => { floorMat.map = t; floorMat.needsUpdate = true; });
+            loader.load('./celing.png', (t) => { ceilMat.map = t; ceilMat.needsUpdate = true; });
 
             function createChunk(cx, cz) {
                 const group = new THREE.Group();
                 for (let x = 0; x < 8; x++) {
                     for (let z = 0; z < 8; z++) {
                         const wx = cx * 8 + x, wz = cz * 8 + z;
+                        
+                        // Floor and Ceiling
                         const f = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMat);
                         f.rotation.x = -Math.PI/2; f.position.set(wx, 0, wz); group.add(f);
                         const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ceilMat);
                         c.rotation.x = Math.PI/2; c.position.set(wx, 2.5, wz); group.add(c);
                         
-                        // Force walls to appear around you immediately
-                        if (Math.sin(wx * 10 + wz * 10) > 0.6 && (Math.abs(wx) > 1 || Math.abs(wz) > 1)) {
+                        // Force wall placement
+                        if (Math.sin(wx * 0.5 + wz * 0.5) > 0.4 && (Math.abs(wx) > 1 || Math.abs(wz) > 1)) {
                             const w = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 1), wallMat);
                             w.position.set(wx, 1.25, wz); group.add(w);
                         }
@@ -67,15 +77,18 @@
             window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
             window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
-            document.body.requestPointerLock();
+            // Proper pointer lock request
+            renderer.domElement.requestPointerLock = renderer.domElement.requestPointerLock || renderer.domElement.mozRequestPointerLock;
+            renderer.domElement.requestPointerLock();
 
             function animate() {
                 requestAnimationFrame(animate);
                 const move = new THREE.Vector3();
-                if (keys['w']) move.z -= 0.1; if (keys['s']) move.z += 0.1;
-                if (keys['a']) move.x -= 0.1; if (keys['d']) move.x += 0.1;
+                if (keys['w']) move.z -= 0.08; if (keys['s']) move.z += 0.08;
+                if (keys['a']) move.x -= 0.08; if (keys['d']) move.x += 0.08;
+                
                 camera.position.add(move.applyQuaternion(camera.quaternion));
-                camera.position.y = 1.6;
+                camera.position.y = 1.6; // Keep player on floor
 
                 const ccx = Math.floor(camera.position.x / 8), ccz = Math.floor(camera.position.z / 8);
                 for (let dx = -1; dx <= 1; dx++) {

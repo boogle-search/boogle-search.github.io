@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Backrooms - HTML Exact Remake</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #121505; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #ffea00; text-align: center; background: rgba(0,0,0,0.85);
+            padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui"><h1>THE BACKROOMS</h1><p>CLICK TO START</p></div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://cdn.jsdelivr.net" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 1. Scene & Camera (Panda3D FOV) ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x121505);
+        scene.fog = new THREE.FogExp2(0x121505, 0.12);
+
+        const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0.5, 1.7, 0.5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. Correct Texture Tiling ---
+        const loader = new THREE.TextureLoader();
+        
+        function loadT(name, repeatX, repeatY) {
+            const t = loader.load(name);
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            t.repeat.set(repeatX, repeatY);
+            return t;
+        }
+
+        const wallTex = loadT('walls.png', 1, 1);
+        const floorTex = loadT('floor.png', 1, 1);
+        const ceilTex = loadT('celing.png', 1, 1); // Your spelling
+
+        const wallMat = new THREE.MeshBasicMaterial({ map: wallTex });
+        const floorMat = new THREE.MeshBasicMaterial({ map: floorTex, color: 0x888888 });
+        const ceilMat = new THREE.MeshBasicMaterial({ map: ceilTex, color: 0xffffaa });
+
+        // --- 3. World Generation ---
+        const chunks = new Map();
+        function getCellType(x, z) {
+            if (Math.abs(x) < 2 && Math.abs(z) < 2) return 0;
+            const n = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+            return (n - Math.floor(n)) > 0.85 ? 1 : 0;
+        }
+
+        function createChunk(cx, cz) {
+            const group = new THREE.Group();
+            for (let x = 0; x < 8; x++) {
+                for (let z = 0; z < 8; z++) {
+                    const wx = cx * 8 + x;
+                    const wz = cz * 8 + z;
+
+                    // Floor & Ceiling
+                    const f = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMat);
+                    f.rotation.x = -Math.PI/2; f.position.set(wx, 0, wz); group.add(f);
+                    const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ceilMat);
+                    c.rotation.x = Math.PI/2; c.position.set(wx, 2.5, wz); group.add(c);
+
+                    // Walls
+                    if (getCellType(wx, wz) === 1) {
+                        const box = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 1), wallMat);
+                        box.position.set(wx, 1.25, wz);
+                        group.add(box);
+                    }
+                }
+            }
+            scene.add(group);
+            return group;
+        }
+
+        // --- 4. Controls ---
+        const keys = {};
+        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+
+        document.getElementById('ui').onclick = function() {
+            renderer.domElement.requestPointerLock();
+            this.style.display = 'none';
+        };
+
+        let yaw = 0, pitch = 0;
+        document.onmousemove = (e) => {
+            if (document.pointerLockElement) {
+                yaw -= e.movementX * 0.002;
+                pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.002));
+                camera.rotation.set(pitch, yaw, 0, 'YXZ');
+            }
+        };
+
+        // --- 5. Main Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const move = new THREE.Vector3();
+            if (keys['w']) move.z -= 1; if (keys['s']) move.z += 1;
+            if (keys['a']) move.x -= 1; if (keys['d']) move.x += 1;
+            
+            if (move.length() > 0) {
+                move.applyQuaternion(camera.quaternion);
+                move.y = 0;
+                camera.position.add(move.normalize().multiplyScalar(0.08));
+            }
+
+            const ccx = Math.floor(camera.position.x / 8);
+            const ccz = Math.floor(camera.position.z / 8);
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dz = -1; dz <= 1; dz++) {
+                    const key = `${ccx + dx},${ccz + dz}`;
+                    if (!chunks.has(key)) chunks.set(key, createChunk(ccx + dx, ccz + dz));
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>

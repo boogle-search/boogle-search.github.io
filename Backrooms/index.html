@@ -2,124 +2,132 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Final Remake</title>
+    <title>Backrooms - Ultimate Remake</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #121505; }
-        canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
-        #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffea00; text-align: center; background: rgba(0,0,0,0.95); padding: 30px; border: 2px solid #ffea00; cursor: pointer; font-family: monospace; z-index: 100; }
+        body { margin: 0; overflow: hidden; background-color: #121505; font-family: 'Courier New', monospace; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #ui {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #ffea00; text-align: center; background: rgba(0,0,0,0.95);
+            padding: 30px; border: 2px solid #ffea00; cursor: pointer; z-index: 100;
+        }
     </style>
 </head>
 <body>
-    <div id="ui" onclick="this.style.display='none'; start()"><h1>THE BACKROOMS</h1><p>CLICK TO ENTER</p></div>
-    <canvas id="c"></canvas>
+    <div id="ui"><h1>THE BACKROOMS</h1><p>CLICK TO START</p></div>
 
-    <script>
-        const canvas = document.getElementById('c');
-        const ctx = canvas.getContext('2d');
-        const wallImg = new Image(); wallImg.src = 'walls.png';
-        const floorImg = new Image(); floorImg.src = 'floor.png';
-        const ceilImg = new Image(); ceilImg.src = 'celing.png';
+    <!-- This link bypasses the security errors from before -->
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev';
 
-        function getCellType(x, y) {
-            if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
-            const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+        // --- 1. SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x121505);
+        scene.fog = new THREE.FogExp2(0x121505, 0.15);
+
+        const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0.5, 1.7, 0.5); // Start at eye level
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. TEXTURES (YOUR EXACT SCALES) ---
+        const loader = new THREE.TextureLoader();
+        
+        const loadTex = (url, repX, repY) => {
+            const t = loader.load(url);
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            t.repeat.set(repX, repY);
+            // This stops the "flashing" and "shimmering"
+            t.magFilter = THREE.NearestFilter; 
+            t.minFilter = THREE.NearestMipmapLinearFilter;
+            return t;
+        };
+
+        // Walls: 4 blocks wide, 10 blocks high (to match 2.5 height scale)
+        const wallMat = new THREE.MeshBasicMaterial({ map: loadTex('walls.png', 4, 10) });
+        // Floor: 1/8th scale carpet
+        const floorMat = new THREE.MeshBasicMaterial({ map: loadTex('floor.png', 8, 8), color: 0x888888 });
+        // Ceiling: standard tiling
+        const ceilMat = new THREE.MeshBasicMaterial({ map: loadTex('celing.png', 1, 1), color: 0xffffaa });
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+        // --- 3. INFINITE GENERATION ---
+        const chunks = new Map();
+        function getCellType(x, z) {
+            if (Math.abs(x) < 2 && Math.abs(z) < 2) return 0;
+            const n = Math.sin(x * 12.9 + z * 78.2) * 43758;
             return (n - Math.floor(n)) > 0.85 ? 1 : 0;
         }
-        
-        let p = { x: 2.5, y: 2.5, dir: 0 };
+
+        function createChunk(cx, cz) {
+            const group = new THREE.Group();
+            for (let x = 0; x < 8; x++) {
+                for (let z = 0; z < 8; z++) {
+                    const wx = cx * 8 + x, wz = cz * 8 + z;
+
+                    // Floor
+                    const f = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), floorMat);
+                    f.rotation.x = -Math.PI/2; f.position.set(wx, 0, wz); group.add(f);
+
+                    // Ceiling + 2-tile Lights
+                    const isLight = (wx % 2 === 0 && wz % 2 === 0);
+                    const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), isLight ? lightMat : ceilMat);
+                    c.rotation.x = Math.PI/2; c.position.set(wx, 2.5, wz); group.add(c);
+
+                    // Walls
+                    if (getCellType(wx, wz) === 1) {
+                        const w = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 1), wallMat);
+                        w.position.set(wx, 1.25, wz); group.add(w);
+                    }
+                }
+            }
+            scene.add(group); return group;
+        }
+
+        // --- 4. CONTROLS ---
         const keys = {};
+        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
-        function start() {
-            window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-            window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-            loop();
-        }
+        document.getElementById('ui').onclick = function() {
+            renderer.domElement.requestPointerLock();
+            this.style.display = 'none';
+        };
 
-        function loop() {
-            if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
-            if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
-            if(keys['a']) p.dir -= 0.05;
-            if(keys['d']) p.dir += 0.05;
+        let yaw = 0, pitch = 0;
+        document.onmousemove = (e) => {
+            if (document.pointerLockElement) {
+                yaw -= e.movementX * 0.002;
+                pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.002));
+                camera.rotation.set(pitch, yaw, 0, 'YXZ');
+            }
+        };
 
-            canvas.width = 300; canvas.height = 200;
-            const buffer = ctx.createImageData(300, 200);
+        // --- 5. GAME LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const move = new THREE.Vector3();
+            if (keys['w']) move.z -= 1; if (keys['s']) move.z += 1;
+            if (keys['a']) move.x -= 1; if (keys['d']) move.x += 1;
+            
+            if (move.length() > 0) {
+                move.applyQuaternion(camera.quaternion);
+                move.y = 0;
+                camera.position.add(move.normalize().multiplyScalar(0.08));
+            }
 
-            // --- 1. TRUE FLOOR & CEILING CASTING ---
-            for(let y = 0; y < 200; y++) {
-                let isFloor = y > 100;
-                let p_dist = Math.abs(100 / (y - 100));
-
-                for(let x = 0; x < 300; x++) {
-                    let cameraX = 2 * x / 300 - 1;
-                    let rDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
-                    let rDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
-
-                    let worldX = p.x + p_dist * rDirX;
-                    let worldY = p.y + p_dist * rDirY;
-
-                    // Lights: Small center of every 2nd tile
-                    let tx_g = Math.floor(worldX), ty_g = Math.floor(worldY);
-                    let rx = worldX % 1, ry = worldY % 1;
-                    let isL = (!isFloor && tx_g % 2 === 0 && ty_g % 2 === 0 && rx > 0.35 && rx < 0.65 && ry > 0.35 && ry < 0.65);
-
-                    // 1/8th Tiling for Floor
-                    let scale = isFloor ? 8 : 1;
-                    let tx = Math.floor((worldX * scale % 1) * 64);
-                    let ty = Math.floor((worldY * scale % 1) * 64);
-
-                    let i = (y * 300 + x) * 4;
-                    if (isL) {
-                        buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 210;
-                    } else {
-                        let fog = Math.min(p_dist / 12, 1);
-                        let r = isFloor ? 80 : 140, g = isFloor ? 75 : 135, b = isFloor ? 50 : 80;
-                        buffer.data[i] = r * (1 - fog) + 18 * fog;
-                        buffer.data[i+1] = g * (1 - fog) + 21 * fog;
-                        buffer.data[i+2] = b * (1 - fog) + 5 * fog;
-                    }
-                    buffer.data[i+3] = 255;
+            const ccx = Math.floor(camera.position.x / 8), ccz = Math.floor(camera.position.z / 8);
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dz = -1; dz <= 1; dz++) {
+                    const k = `${ccx+dx},${ccz+dz}`;
+                    if (!chunks.has(k)) chunks.set(k, createChunk(ccx+dx, ccz+dz));
                 }
             }
-            ctx.putImageData(buffer, 0, 0);
-
-            // --- 2. DDA WALLS (4x4 Tiling) ---
-            for(let x=0; x < 300; x++) {
-                let cameraX = 2 * x / 300 - 1;
-                let rDirX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
-                let rDirY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
-                let mapX = Math.floor(p.x), mapY = Math.floor(p.y);
-                let dX = Math.abs(1 / rDirX), dY = Math.abs(1 / rDirY);
-                let stepX, stepY, sX, sY;
-
-                if (rDirX < 0) { stepX = -1; sX = (p.x - mapX) * dX; }
-                else { stepX = 1; sX = (mapX + 1.0 - p.x) * dX; }
-                if (rDirY < 0) { stepY = -1; sY = (p.y - mapY) * dY; }
-                else { stepY = 1; sY = (mapY + 1.0 - p.y) * dY; }
-
-                let hit = 0, side = 0;
-                while (hit === 0) {
-                    if (sX < sY) { sX += dX; mapX += stepX; side = 0; }
-                    else { sY += dY; mapY += stepY; side = 1; }
-                    if (getCellType(mapX, mapY) > 0) hit = 1;
-                }
-
-                let pDist = (side === 0) ? (sX - dX) : (sY - dY);
-                let h = Math.floor(200 / pDist);
-                let wallY = (200 - h) / 2;
-
-                if (wallImg.complete) {
-                    let wH = (side === 0) ? p.y + pDist * rDirY : p.x + pDist * rDirX;
-                    wH -= Math.floor(wH);
-                    let texX = Math.floor((wH * 4 % 1) * wallImg.width);
-                    for (let t = 0; t < 4; t++) {
-                        ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wallY + (t * h/4), 1, h/4 + 1);
-                    }
-                }
-                ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pDist / 10, 0.95)})`;
-                ctx.fillRect(x, wallY, 1, h);
-            }
-            requestAnimationFrame(loop);
+            renderer.render(scene, camera);
         }
+        animate();
     </script>
 </body>
 </html>

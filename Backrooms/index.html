@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Backrooms - Steady Eye Fix</title>
+    <title>Backrooms - Texture Fixed</title>
     <style>
         body { margin: 0; overflow: hidden; background: #121505; }
         canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
@@ -16,7 +16,15 @@
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
+        
+        // 1. ASSET LOADING
         const wallImg = new Image(); wallImg.src = 'walls.png';
+        const floorImg = new Image(); floorImg.src = 'floor.png';
+        const ceilImg = new Image(); ceilImg.src = 'celing.png';
+
+        // Hidden canvases to "read" the pixels from your images
+        const fCan = document.createElement('canvas'), fCtx = fCan.getContext('2d');
+        const cCan = document.createElement('canvas'), cCtx = cCan.getContext('2d');
 
         function getCell(x, y) {
             if (Math.abs(x) < 2 && Math.abs(y) < 2) return 0;
@@ -28,13 +36,19 @@
         const keys = {};
 
         function start() {
+            // Prepare the texture maps
+            fCan.width = fCan.height = 64; fCtx.drawImage(floorImg, 0, 0, 64, 64);
+            cCan.width = cCan.height = 64; cCtx.drawImage(ceilImg, 0, 0, 64, 64);
+            const fPixels = fCtx.getImageData(0, 0, 64, 64).data;
+            const cPixels = cCtx.getImageData(0, 0, 64, 64).data;
+
             window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
             window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-            loop();
+            loop(fPixels, cPixels);
         }
 
-        function loop() {
-            // Smooth Movement
+        function loop(fPixels, cPixels) {
+            // Movement
             if(keys['w']) { p.x += Math.cos(p.dir)*0.06; p.y += Math.sin(p.dir)*0.06; }
             if(keys['s']) { p.x -= Math.cos(p.dir)*0.06; p.y -= Math.sin(p.dir)*0.06; }
             if(keys['a']) p.dir -= 0.05;
@@ -43,9 +57,9 @@
             canvas.width = 400; canvas.height = 300;
             const buffer = ctx.createImageData(400, 300);
 
-            // 1. STEADY FLOOR & CEILING (1/8th Floor, 2-Tile Lights)
+            // --- 2. TEXTURED FLOOR & CEILING (8x FLOOR TILING) ---
             for(let y = 0; y < 300; y++) {
-                let isF = y > 150;
+                let isFloor = y > 150;
                 let p_dist = Math.abs(150 / (y - 150));
 
                 for(let x = 0; x < 400; x++) {
@@ -56,17 +70,25 @@
                     let wX = p.x + p_dist * rDX;
                     let wY = p.y + p_dist * rDY;
 
-                    // Small center light every 2 units
+                    // Lights check
                     let tX = Math.floor(wX), tY = Math.floor(wY);
                     let rX = wX % 1, rY = wY % 1;
-                    let isL = (!isF && tX % 2 === 0 && tY % 2 === 0 && rX > 0.35 && rX < 0.65 && rY > 0.35 && rY < 0.65);
+                    let isL = (!isFloor && tX % 2 === 0 && tY % 2 === 0 && rX > 0.35 && rX < 0.65 && rY > 0.35 && rY < 0.65);
+
+                    // 1/8th Scale for Floor
+                    let scale = isFloor ? 8 : 1;
+                    let tx = Math.floor((wX * scale % 1) * 64);
+                    let ty = Math.floor((wY * scale % 1) * 64);
+                    let texI = (ty * 64 + tx) * 4;
 
                     let i = (y * 400 + x) * 4;
                     if (isL) {
                         buffer.data[i] = 255; buffer.data[i+1] = 255; buffer.data[i+2] = 220;
                     } else {
                         let fog = Math.min(p_dist / 12, 1);
-                        let r = isF ? 80 : 140, g = isF ? 75 : 135, b = isF ? 50 : 80;
+                        let r = isFloor ? fPixels[texI] : cPixels[texI];
+                        let g = isFloor ? fPixels[texI+1] : cPixels[texI+1];
+                        let b = isFloor ? fPixels[texI+2] : cPixels[texI+2];
                         buffer.data[i] = r * (1 - fog) + 18 * fog;
                         buffer.data[i+1] = g * (1 - fog) + 21 * fog;
                         buffer.data[i+2] = b * (1 - fog) + 5 * fog;
@@ -76,14 +98,14 @@
             }
             ctx.putImageData(buffer, 0, 0);
 
-            // 2. DDA WALLS (4x4 Locked Tiling)
+            // --- 3. DDA WALLS (4x4 TILING) ---
             for(let x=0; x < 400; x++) {
                 let cameraX = 2 * x / 400 - 1;
                 let rDX = Math.cos(p.dir) + Math.sin(p.dir) * cameraX * -0.66;
                 let rDY = Math.sin(p.dir) - Math.cos(p.dir) * cameraX * -0.66;
                 let mX = Math.floor(p.x), mY = Math.floor(p.y);
                 let dX = Math.abs(1/rDX), dY = Math.abs(1/rDY);
-                let sX, sY, stX, stY;
+                let stX, stY, sX, sY;
 
                 if(rDX<0){stX=-1;sX=(p.x-mX)*dX;}else{stX=1;sX=(mX+1-p.x)*dX;}
                 if(rDY<0){stY=-1;sY=(p.y-mY)*dY;}else{stY=1;sY=(mY+1-p.y)*dY;}
@@ -101,12 +123,12 @@
                 if(wallImg.complete){
                     let hitP = (side===0)?p.y+pD*rDY:p.x+pD*rDX;
                     let texX = Math.floor((hitP*4%1)*wallImg.width);
-                    for(let t=0; t<4; t++) ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wY+(t*h/4), 1, h/4+1);
+                    for(let t=0; t<4; t++) ctx.drawImage(wallImg, texX, 0, 1, wallImg.height, x, wY+(t*h/4), 1, h/4 + 1);
                 }
                 ctx.fillStyle = `rgba(18, 21, 5, ${Math.min(pD/10, 0.95)})`;
                 ctx.fillRect(x, wY, 1, h);
             }
-            requestAnimationFrame(loop);
+            requestAnimationFrame(() => loop(fPixels, cPixels));
         }
     </script>
 </body>

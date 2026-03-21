@@ -12,14 +12,14 @@
       display: grid;
       grid-template-rows: 75px 1fr;
       grid-template-columns: 280px 1fr;
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
       color: #003366;
-      /* YOUR BACKGROUND URL */
+      /* YOUR BACKGROUND */
       background: url('https://i.ibb.co/7Nj7R6DY/Untitled-design-3.png') center/cover no-repeat fixed;
       overflow: hidden;
     }
 
-    /* Topbar with Bold Title */
+    /* Glassmorphism Topbar */
     topbar {
       grid-column: 1 / -1;
       display: flex;
@@ -43,7 +43,7 @@
       border-right: 1px solid rgba(255, 255, 255, 0.15);
     }
 
-    /* Workspace Tag with Animation */
+    /* Workspace Layout */
     workspace {
       display: none; 
       padding: 40px;
@@ -61,8 +61,8 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Glossy Tile Styling */
-    section, .menu-tile {
+    /* THE CLEAN AERO TILE STYLE */
+    section, .menu-tile, .task-item {
       position: relative;
       overflow: hidden;
       margin-bottom: 15px;
@@ -76,24 +76,15 @@
       transition: 0.4s ease;
     }
 
-    section:hover, .menu-tile:hover { 
+    section:hover, .menu-tile:hover, .task-item:hover { 
       transform: translateY(-5px); 
       background: rgba(255, 255, 255, 0.3); 
     }
 
-    /* Shine effect */
-    section::after, .menu-tile::after {
-      content: "";
-      position: absolute;
-      top: 0; left: -150%; width: 100%; height: 100%;
-      background: linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent);
-      transform: skewX(-20deg);
-    }
-    section:hover::after, .menu-tile:hover::after { left: 150%; transition: 0.9s; }
-
     h3 { margin: 0 0 10px; font-size: 21px; font-weight: 600; }
     p { margin: 0 0 15px; font-size: 15px; line-height: 1.5; opacity: 0.9; }
 
+    /* The Clean Aero Tag */
     .tag {
       display: inline-block;
       padding: 4px 12px;
@@ -102,6 +93,7 @@
       font-weight: 700;
       background: rgba(255, 255, 255, 0.4);
       border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #003366;
     }
   </style>
 </head>
@@ -118,83 +110,152 @@
     <div class="menu-tile" onclick="showWS('settings')">Settings</div>
   </nav>
 
-  <!-- DASHBOARD WORKSPACE -->
+  <!-- DASHBOARD -->
   <workspace id="dash" class="active">
     <section id="profile-tile" onclick="changeName()">
       <h3 id="user-name">User Profile</h3>
-      <p>Status: Dreaming of Glassmorphism</p>
+      <p>Status: Aero Enthusiast</p>
       <span class="tag">Online</span>
     </section>
 
-    <section>
-      <h3>Weather</h3>
-      <p>Mostly Sunny in the Digital World</p>
-      <span class="tag">72°F</span>
+    <!-- GOOGLE-STYLE WEATHER WIDGET -->
+    <section onclick="getWeather()">
+      <h3 id="weather-city">Weather</h3>
+      <p id="weather-status">Detecting location...</p>
+      <span id="weather-temp" class="tag">--°F</span>
     </section>
 
-    <section onclick="toggleMusic()">
+    <section>
       <h3>Music Player</h3>
-      <p id="music-status">Now Playing: Aero Focus</p>
-      <span class="tag">Simulated Audio</span>
+      <p>Now Playing: Liquid Skies</p>
+      <span class="tag">Active</span>
     </section>
   </workspace>
 
-  <!-- WORK CENTER WORKSPACE -->
+  <!-- WORK CENTER -->
   <workspace id="work">
     <section onclick="addTask()">
       <h3>+ Add New Task</h3>
-      <p>Add a simulated task to your list.</p>
+      <p>Click to schedule a new event.</p>
     </section>
-    
-    <section>
-      <h3>Calendar</h3>
-      <p>Next Event: Designing the future.</p>
-      <span class="tag">2:00 PM</span>
-    </section>
+    <!-- Dynamic Tasks inject here -->
   </workspace>
 
-  <!-- SETTINGS WORKSPACE -->
   <workspace id="settings">
-    <section>
-      <h3>Appearance</h3>
-      <p>Current: Frutiger Aero Theme</p>
-      <span class="tag">Locked</span>
+    <section onclick="localStorage.clear(); location.reload();">
+      <h3>System Reset</h3>
+      <p>Wipe all local storage.</p>
+      <span class="tag">Clear Data</span>
     </section>
   </workspace>
 
   <script>
-    // 1. Workspace Switcher
     function showWS(id) {
       document.querySelectorAll('workspace').forEach(ws => ws.classList.remove('active'));
       document.getElementById(id).classList.add('active');
     }
 
-    // 2. Profile Customization
     function changeName() {
-      let name = prompt("Enter your name for your Offiz profile:");
-      if (name) { document.getElementById('user-name').innerText = name; }
+      let name = prompt("Enter your name:");
+      if (name) { 
+        localStorage.setItem('offiz_name', name);
+        document.getElementById('user-name').innerText = name; 
+      }
     }
 
-    // 3. Task Simulator
+    // --- GOOGLE-STYLE WEATHER FETCH WITH FALLBACK ---
+async function getWeather() {
+  const statusEl = document.getElementById('weather-status');
+  const tempEl = document.getElementById('weather-temp');
+  const cityEl = document.getElementById('weather-city');
+
+  // 1. Check if we already have a city saved in LocalStorage
+  const savedCity = localStorage.getItem('offiz_city');
+  if (savedCity) {
+    fetchCityWeather(savedCity);
+    return;
+  }
+
+  // 2. Try Auto-Location
+  if ("geolocation" in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        fetchWeather(pos.coords.latitude, pos.coords.longitude, "Local Skies");
+      },
+      () => {
+        // 3. THE FALLBACK: Prompt if location is denied
+        let city = prompt("Weather location blocked. Enter your City (e.g. New York):");
+        if (city) {
+          localStorage.setItem('offiz_city', city);
+          fetchCityWeather(city);
+        } else {
+          statusEl.innerText = "Location Required";
+        }
+      }
+    );
+  }
+}
+
+async function fetchCityWeather(city) {
+  try {
+    // Converts city name to coordinates (Google-style geocoding)
+    const geoRes = await fetch(`https://geocoding-api.open-meteo.com{city}&count=1`);
+    const geoData = await geoRes.json();
+    
+    if (geoData.results && geoData.results.length > 0) {
+      const { latitude, longitude, name } = geoData.results[0];
+      document.getElementById('weather-city').innerText = name;
+      fetchWeather(latitude, longitude, "Live Skies");
+    } else {
+      document.getElementById('weather-status').innerText = "City not found";
+    }
+  } catch (e) {
+    document.getElementById('weather-status').innerText = "Sync Error";
+  }
+}
+
+async function fetchWeather(lat, lon, statusText) {
+  try {
+    const res = await fetch(`https://api.open-meteo.com{lat}&longitude=${lon}&current_weather=true&temperature_unit=fahrenheit`);
+    const data = await res.json();
+    document.getElementById('weather-temp').innerText = Math.round(data.current_weather.temperature) + "°F";
+    document.getElementById('weather-status').innerText = statusText;
+  } catch (e) {
+    document.getElementById('weather-status').innerText = "Sync Error";
+  }
+}
+
+
+    // --- CALENDAR SYSTEM ---
     function addTask() {
-      let task = prompt("What's the new task?");
-      if (task) { alert("Simulated Task Created: " + task); }
+      let name = prompt("Event Name:");
+      let time = prompt("Time:");
+      if (name && time) {
+        let tasks = JSON.parse(localStorage.getItem('offiz_tasks') || "[]");
+        tasks.push({ name, time });
+        localStorage.setItem('offiz_tasks', JSON.stringify(tasks));
+        renderTasks();
+      }
     }
 
-    // 4. Music Simulator
-    let isPlaying = false;
-    function toggleMusic() {
-      isPlaying = !isPlaying;
-      document.getElementById('music-status').innerText = isPlaying ? "Now Playing: Liquid Skies" : "Music Paused";
+    function renderTasks() {
+      const container = document.getElementById('work');
+      const tasks = JSON.parse(localStorage.getItem('offiz_tasks') || "[]");
+      container.innerHTML = `<section onclick="addTask()"><h3>+ Add New Task</h3><p>Click to schedule a new event.</p></section>`;
+      tasks.forEach(t => {
+        container.innerHTML += `<div class="task-item"><h3>${t.name}</h3><p>Scheduled Event</p><span class="tag">${t.time}</span></div>`;
+      });
     }
 
-    // 5. Clock Script
-    function updateClock() {
-      document.getElementsByTagName('clock')[0].innerText = new Date().toLocaleTimeString();
-    }
-    setInterval(updateClock, 1000);
-    updateClock();
+    window.onload = function() {
+      const savedName = localStorage.getItem('offiz_name');
+      if (savedName) document.getElementById('user-name').innerText = savedName;
+      renderTasks();
+      getWeather();
+      setInterval(() => {
+        document.querySelector('clock').innerText = new Date().toLocaleTimeString();
+      }, 1000);
+    };
   </script>
-
 </body>
 </html>

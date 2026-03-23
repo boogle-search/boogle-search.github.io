@@ -21,43 +21,40 @@
     <script>
         async function loadGames() {
     const container = document.getElementById('game-list');
-    
-    // Hardcoded URL - no variables to mess up!
     const url = "https://api.github.com";
 
     try {
         const response = await fetch(url);
+        if (!response.ok) throw new Error("Folder not found");
         
-        // If it's not working, let's find out why
-        if (!response.ok) {
-            console.error("GitHub API Response:", response.status, response.statusText);
-            throw new Error(`Status ${response.status}: ${response.statusText}`);
-        }
-
-        const items = await response.json();
+        let items = await response.json();
         container.innerHTML = ""; 
+
+        // FIX: If there is only one file, GitHub might not return a list.
+        // This line forces it to be a list so the code doesn't crash.
+        if (!Array.isArray(items)) {
+            items = [items];
+        }
 
         items.forEach(item => {
             if (item.name.endsWith('.html')) {
                 const card = document.createElement('div');
-                card.className = 'card';
+                card.className = 'game-card';
+                // This will show "GD: geometrydash"
                 card.innerHTML = `<h3>GD: ${item.name.replace('.html', '')}</h3>`;
+                
+                // Boom! Takes you to your game
                 card.onclick = () => window.location.href = `./games/${item.name}`;
                 container.appendChild(card);
             }
         });
 
-        if (container.innerHTML === "") {
-            container.innerHTML = "Folder 'games' is empty! Add your .html files to it.";
-        }
-
     } catch (err) {
-        container.innerHTML = `Error: Cannot find 'games' folder in boogle-search/geometrydashfree. <br><br> <small>API Error: ${err.message}</small>`;
-        console.log("Check this URL in your browser to see if it works:", url);
+        container.innerHTML = "Error: GitHub API is being glitchy. Try refreshing!";
+        console.error(err);
     }
 }
 loadGames();
-
 
     </script>
 </body>

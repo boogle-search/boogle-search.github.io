@@ -1,0 +1,33 @@
+name: GD Game Compiler
+on:
+  push:
+    branches:
+      - main # Make sure this matches your branch name (usually 'main' or 'master')
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # This lets GitHub save the compiled games to your repo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm install @turbowarp/sbdl turbowarp-packager-cli
+
+      - name: Run Compiler Script
+        run: node build-gd.js
+
+      - name: Commit and Push Games
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add games/
+          git commit -m "Automated: Compiled new GD games" || echo "No changes to commit"
+          git push

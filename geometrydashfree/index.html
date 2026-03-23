@@ -22,49 +22,42 @@
         async function loadGames() {
     const container = document.getElementById('game-list');
     
-    // Hardcoded URL to your specific repository and folder
+    // Hardcoded URL - no variables to mess up!
     const url = "https://api.github.com";
 
     try {
         const response = await fetch(url);
         
+        // If it's not working, let's find out why
         if (!response.ok) {
-            throw new Error("Folder not found or API limit reached");
+            console.error("GitHub API Response:", response.status, response.statusText);
+            throw new Error(`Status ${response.status}: ${response.statusText}`);
         }
 
         const items = await response.json();
-        container.innerHTML = ""; // Clear the "Scanning" message
+        container.innerHTML = ""; 
 
-        // This maps your 42 HTML files to buttons
         items.forEach(item => {
             if (item.name.endsWith('.html')) {
                 const card = document.createElement('div');
                 card.className = 'card';
-                // Removes the .html from the button text for a cleaner look
-                const displayName = item.name.replace('.html', '');
-                card.innerHTML = `<h3>GD: ${displayName}</h3>`;
-                
-                // When clicked, it takes you to boogle-search.github.io/geometrydashfree/games/ID.html
-                card.onclick = () => {
-                    window.location.href = `./games/${item.name}`;
-                };
-                
+                card.innerHTML = `<h3>GD: ${item.name.replace('.html', '')}</h3>`;
+                card.onclick = () => window.location.href = `./games/${item.name}`;
                 container.appendChild(card);
             }
         });
 
         if (container.innerHTML === "") {
-            container.innerHTML = "Folder found, but no .html files are inside it!";
+            container.innerHTML = "Folder 'games' is empty! Add your .html files to it.";
         }
 
     } catch (err) {
-        container.innerHTML = "Error: Could not find 'games' folder in boogle-search/geometrydashfree";
-        console.error("The script tried to reach:", url);
+        container.innerHTML = `Error: Cannot find 'games' folder in boogle-search/geometrydashfree. <br><br> <small>API Error: ${err.message}</small>`;
+        console.log("Check this URL in your browser to see if it works:", url);
     }
 }
-
-// Start the search
 loadGames();
+
 
     </script>
 </body>

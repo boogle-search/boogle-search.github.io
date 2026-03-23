@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "@turbowarp/sbdl": "^2.0.0",
-    "turbowarp-packager-cli": "^1.0.0"
-  }
-}

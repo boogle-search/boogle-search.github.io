@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OpenBlox Client Forge v500.0</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #0d0d11; color: #e2e8f0; padding: 40px; margin: 0; }
+        .container { max-width: 750px; margin: 0 auto; background: #15151e; padding: 30px; border-radius: 12px; border: 1px solid #262636; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h1 { color: #3b82f6; margin: 0 0 10px 0; font-size: 24px; border-bottom: 2px solid #262636; padding-bottom: 10px; }
+        p { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; color: #3b82f6; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+        input[type="text"], textarea { width: 100%; padding: 12px; background: #1e1e2f; color: #fff; border: 1px solid #3b3b4f; border-radius: 6px; box-sizing: border-box; font-size: 14px; margin-bottom: 20px; }
+        textarea { height: 130px; font-family: monospace; resize: vertical; }
+        button { background: #10b981; color: #fff; border: none; padding: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; transition: background 0.2s; width: 100%; display: block; }
+        button:hover { background: #059669; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>OpenBlox Client Forge ⚒️</h1>
+    <p>Function Hijack Engine Active. This version locks block placement by temporarily freezing your spawn function right after map load.</p>
+    
+    <label for="gameTitle">1. Custom Page Title:</label>
+    <input type="text" id="gameTitle" value="Pool Party">
+
+    <label for="mapJson">2. Paste Map JSON Code Array:</label>
+    <textarea id="mapJson" placeholder="Paste your map array from Pastebin (starts with [ and ends with ])"></textarea>
+
+    <label for="gameCode">3. Paste Your Base Editor Script Code:</label>
+    <textarea id="gameCode" style="height: 160px;" placeholder="Paste your FULL untouched editor script text content here..."></textarea>
+
+    <button onclick="forgeProductionClient()">FORGE LOCKED PLAYER CLIENT</button>
+</div>
+
+<script>
+function forgeProductionClient() {
+    const titleVal = document.getElementById('gameTitle').value.trim() || 'Custom Map';
+    const mapInput = document.getElementById('mapJson').value.trim();
+    let gameInput = document.getElementById('gameCode').value.trim();
+
+    if (!mapInput || !gameInput) {
+        alert('Error: Please fill out both data input fields before forging!');
+        return;
+    }
+
+    try {
+        JSON.parse(mapInput); // Validation check
+
+        // Step 1: Update your webpage browser tab header title
+        let compiledOutput = gameInput.replace(/<title>.*?<\/title>/i, `<title>OpenBlox: ${titleVal}</title>`);
+        
+        // Step 2: Core Runtime Hijack Injection Script
+        const functionHijackBlock = `
+<script>
+    // Flag to control building access rights
+    window.allowAssetSpawning = true;
+
+    window.addEventListener('load', () => {
+        if (typeof scene !== 'undefined' && typeof spawnEntity === 'function') {
+            
+            // 1. Hijack the native spawnEntity function completely!
+            const originalSpawnFunction = window.spawnEntity;
+            window.spawnEntity = function(type, config) {
+                if (window.allowAssetSpawning) {
+                    return originalSpawnFunction(type, config);
+                }
+                // Return null to completely ignore any placement clicks during gameplay!
+                return null;
+            };
+
+            // 2. Hide the editor top menu panel completely
+            const editorPanels = document.querySelectorAll('div, form, select, nav, p, header');
+            editorPanels.forEach(panel => {
+                const text = panel.innerText || '';
+                if (text.includes('SHAPE') || text.includes('COLOR') || text.includes('EXPORT') || text.includes('MODE:')) {
+                    panel.style.display = 'none';
+                    panel.style.visibility = 'hidden';
+                    panel.style.pointerEvents = 'none';
+                }
+            });
+
+            // 3. Clear placeholder entities but protect your green grass floor canvas
+            for (let i = scene.children.length - 1; i >= 0; i--) {
+                let child = scene.children[i];
+                if (child.type === "Mesh" && child !== window.playerMesh) {
+                    let isFloor = false;
+                    if (child.geometry && child.geometry.parameters) {
+                        if (child.geometry.parameters.width > 30 || child.geometry.parameters.width === 200) {
+                            isFloor = true;
+                        }
+                    }
+                    if (child.scale.x > 30 || child.position.y < 0) {
+                        isFloor = true;
+                    }
+                    if (!isFloor) {
+                        scene.remove(child);
+                    }
+                }
+            }
+
+            // 4. Load your custom map blocks safely while spawning is allowed
+            const customMapData = ${mapInput};
+            customMapData.forEach(block => {
+                window.spawnEntity(block.type || 'box', {
+                    x: block.x,
+                    y: block.y,
+                    z: block.z,
+                    color: block.color
+                });
+            });
+
+            // 5. LOCK THE GATE: Turn off spawning completely now that the map is fully loaded!
+            window.allowAssetSpawning = false;
+        }
+    });
+<\/script>
+`;
+
+        // Append right before the closing HTML element tag
+        if (compiledOutput.includes('</html>')) {
+            compiledOutput = compiledOutput.replace('</html>', functionHijackBlock + '\n</html>');
+        } else {
+            compiledOutput = compiledOutput + "\n" + functionHijackBlock;
+        }
+
+        // Step 3: Trigger stable file download link stream
+        const blob = new Blob([compiledOutput], { type: 'text/html' });
+        const trigger = document.createElement('a');
+        trigger.href = URL.createObjectURL(blob);
+        trigger.download = `OpenBlox_${titleVal.replace(/\s+/g, '_')}_Locked_Client.html`;
+        
+        document.body.appendChild(trigger);
+        trigger.click();
+        document.body.removeChild(trigger);
+
+    } catch (e) {
+        alert('Format Configuration Fault: Ensure your map JSON text block begins with [ and ends with ].');
+    }
+}
+</script>
+</body>
+</html>

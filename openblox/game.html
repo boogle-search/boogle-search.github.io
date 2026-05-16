@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>OpenBlox</title>
+    <link rel="stylesheet" href="./style.css">
+
+  </head>
+    
+  <body>
+  <!-- Rendering parent -->
+<div id="canvas"></div>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'></script>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/ejs@3.1.8/ejs.min.js'></script>
+<script src='https://jsdelivr.netthree@0.126.1/examples/js/controls/OrbitControls.js'></script><script  src="./script.js"></script>
+<script>
+  /////////////////////////////////////// 
+// 1. Initialization & Variables ////// 
+let targetX = 0,targetY = 0;
+let zoom = 8;
+
+// Track WASD and Spacebar keys 
+const keys = { w: false, a: false, s: false, d: false, space: false };
+window.addEventListener('keydown', e => {
+  if (e.key === ' ') keys.space = true;else
+  keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener('keyup', e => {
+  if (e.key === ' ') keys.space = false;else
+  keys[e.key.toLowerCase()] = false;
+});
+
+// --- ROBLOX CUSTOM VISUAL CURSOR SETUP --- 
+const fakeCursor = document.createElement('div');
+fakeCursor.id = 'fake-roblox-cursor';
+fakeCursor.style.position = 'fixed';
+fakeCursor.style.width = '18px';
+fakeCursor.style.height = '18px';
+fakeCursor.style.backgroundColor = 'white';
+fakeCursor.style.border = '2px solid black';
+fakeCursor.style.pointerEvents = 'none';
+fakeCursor.style.zIndex = '99999';
+document.body.appendChild(fakeCursor);
+
+// Inject absolute CSS override to hide your computer's real default hardware arrow 
+const cursorStyle = document.createElement('style');
+cursorStyle.innerHTML = 'body, #canvas { cursor: none !important; }';
+document.head.appendChild(cursorStyle);
+
+// Track Right-Click down holding state 
+let isRightClicking = false;
+window.addEventListener('mousedown', e => {if (e.button === 2) isRightClicking = true;});
+window.addEventListener('mouseup', e => {if (e.button === 2) isRightClicking = false;});
+
+// Track mouse positioning and update view logic 
+window.addEventListener('mousemove', e => {
+  if (!isRightClicking) {
+    fakeCursor.style.left = e.clientX + 'px';
+    fakeCursor.style.top = e.clientY + 'px';
+  } else {
+    targetX += e.movementX * 0.005;
+    targetY += e.movementY * 0.005;
+
+    if (targetY < -1.4) targetY = -1.4;
+    if (targetY > 1.4) targetY = 1.4;
+  }
+});
+
+// Scroll to Zoom 
+window.addEventListener('wheel', e => {
+  zoom += e.deltaY * 0.02;
+  if (zoom < 3) zoom = 3;
+  if (zoom > 40) zoom = 40;
+});
+
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+// Cannon.js Setup 
+var world = new CANNON.World();
+world.gravity.set(0, -9.82, 0);
+var fixedTimeStep = 1.0 / 60.0;
+
+// Three.js Setup 
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0xffffff);
+document.getElementById("canvas").appendChild(renderer.domElement);
+
+/////////////////////////////////////// 
+// 2. Objects & Lights //////////////// 
+let sphere, ground, player, sphereBody, groundBody;
+let playerRotationY = 0;
+let targetRotationY = 0;
+let playerVelocityY = 0;
+let isGrounded = true;
+
+function setupScene() {
+  // Visual Sphere (The blue ball) 
+  sphere = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), new THREE.MeshPhysicalMaterial({ color: 0x00a2ff }));
+  scene.add(sphere);
+
+  // Visual Ground (Top surface is at Y = 0.5)
+  ground = new THREE.Mesh(new THREE.BoxGeometry(40, 1, 40), new THREE.MeshPhysicalMaterial({ color: 0x00ff00 }));
+  scene.add(ground);
+
+  // Lighting environment base 
+  scene.add(new THREE.AmbientLight(0x404040, 0.5));
+  const dLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dLight.position.set(5, 10, 7);
+  scene.add(dLight);
+
+  // --- BUILDING THE ROBLOX NOOB ---
+  player = new THREE.Group();
+
+  // FIXED: Hybrid materials that stay bright but still accept soft shadows
+  const yellowMat = new THREE.MeshStandardMaterial({
+    color: 0xffd800,
+    emissive: 0xffd800,
+    emissiveIntensity: 0.25, // Blends 25% flat color brightness with 3D shadows
+    roughness: 0.6 });
+
+  const blueMat = new THREE.MeshStandardMaterial({
+    color: 0x0054a6,
+    emissive: 0x0054a6,
+    emissiveIntensity: 0.25,
+    roughness: 0.6 });
+
+  const greenMat = new THREE.MeshStandardMaterial({
+    color: 0x4cb13c,
+    emissive: 0x4cb13c,
+    emissiveIntensity: 0.25,
+    roughness: 0.6 });
+
+
+
+  // 1. Left Leg (Green Block) - Lifted so bottom edge sits perfectly at the group floor center (0,0,0)
+  const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), greenMat);
+  leftLeg.position.set(-0.5, 1.0, 0);
+  player.add(leftLeg);
+
+  // 2. Right Leg (Green Block) - Lifted so bottom edge sits perfectly at the group floor center (0,0,0)
+  const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), greenMat);
+  rightLeg.position.set(0.5, 1.0, 0);
+  player.add(rightLeg);
+
+  // 3. Torso (Blue Block) - Shifted upward to weld neatly above the legs
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 1), blueMat);
+  torso.position.y = 3.0;
+  player.add(torso);
+
+  // 4. Head (Yellow Block) - Stacked precisely above torso neck joint
+  const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), yellowMat);
+  head.position.y = 4.6;
+  player.add(head);
+
+  // 5. Left Arm (Yellow Block)
+  const leftArm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), yellowMat);
+  leftArm.position.set(-1.5, 3.0, 0);
+  player.add(leftArm);
+
+  // 6. Right Arm (Yellow Block)
+  const rightArm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), yellowMat);
+  rightArm.position.set(1.5, 3.0, 0);
+  player.add(rightArm);
+
+  // FIXED: Scales the entire unified group down to 75%
+  player.scale.set(0.75, 0.75, 0.75);
+
+  // FIXED: Standard ground initialization height set to 0.5 to balance scaling coordinates
+  player.position.set(3, 0.5, 0);
+  scene.add(player);
+
+  sphereBody = new CANNON.Body({ mass: 5, position: new CANNON.Vec3(0, 15, 0), shape: new CANNON.Sphere(1) });
+  world.addBody(sphereBody);
+
+  groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(20, 0.5, 20)) });
+  world.addBody(groundBody);
+}
+setupScene();
+
+/////////////////////////////////////// 
+// 3. The Engine Loop ///////////////// 
+function animate() {
+  requestAnimationFrame(animate);
+  world.step(fixedTimeStep);
+
+  sphere.position.copy(sphereBody.position);
+
+  // --- RESPONSIVE MOVEMENT --- 
+  const moveSpeed = 0.15;
+  let moveX = 0;
+  let moveZ = 0;
+
+  if (keys.w) {moveX -= Math.sin(targetX);moveZ -= Math.cos(targetX);}
+  if (keys.s) {moveX += Math.sin(targetX);moveZ += Math.cos(targetX);}
+  if (keys.a) {moveX -= Math.cos(targetX);moveZ += Math.sin(targetX);}
+  if (keys.d) {moveX += Math.cos(targetX);moveZ -= Math.sin(targetX);}
+
+  let moveLen = Math.sqrt(moveX * moveX + moveZ * moveZ);
+  if (moveLen > 0) {
+    player.position.x += moveX / moveLen * moveSpeed;
+    player.position.z += moveZ / moveLen * moveSpeed;
+
+    targetRotationY = Math.atan2(moveX, moveZ);
+
+    let diff = targetRotationY - playerRotationY;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    playerRotationY += diff * 0.15;
+    player.rotation.y = playerRotationY;
+  }
+
+  // --- MANUAL GRAVITY, EDGE DETECTION & JUMPING --- 
+  const isOnPlatform = player.position.x >= -20 && player.position.x <= 20 &&
+  player.position.z >= -20 && player.position.z <= 20;
+
+  // FIXED: Ground level lock set to 0.5 so soles stand exactly flush on top of the grass box!
+  if (isOnPlatform && player.position.y <= 0.5 && playerVelocityY <= 0) {
+    player.position.y = 0.5;
+    playerVelocityY = 0;
+    isGrounded = true;
+  } else {
+    isGrounded = false;
+  }
+
+  if (keys.space && isGrounded) {
+    playerVelocityY = 0.35;
+    isGrounded = false;
+  }
+
+  if (!isGrounded) {
+    playerVelocityY -= 0.018;
+    player.position.y += playerVelocityY;
+  }
+
+  // Void Respawn boundaries 
+  if (player.position.y < -20) {
+    player.position.set(0, 5.0, 0);
+    playerVelocityY = 0;
+  }
+
+  if (sphereBody.position.y < -20) {
+    sphereBody.position.set(0, 15, 0);
+    sphereBody.velocity.set(0, 0, 0);
+    sphereBody.angularVelocity.set(0, 0, 0);
+  }
+
+  // --- ARCADIC BOUNDING COLLISION CALCULATION --- 
+  let dx = sphereBody.position.x - player.position.x;
+  let dz = sphereBody.position.z - player.position.z;
+  let distance = Math.sqrt(dx * dx + dz * dz);
+
+  if (distance < 1.5 && Math.abs(sphereBody.position.y - (player.position.y + 1.5)) < 2.0) {
+    let pushForce = 14;
+    sphereBody.velocity.x = dx / distance * pushForce;
+    sphereBody.velocity.z = dz / distance * pushForce;
+  }
+
+  // --- SMOOTH ORBIT CAMERA TRACKING --- 
+  // Focus the camera tracking right at the mid-torso height level
+  camera.position.x = player.position.x + zoom * Math.sin(targetX) * Math.cos(targetY);
+  camera.position.y = player.position.y + 1.5 + zoom * Math.sin(targetY);
+  camera.position.z = player.position.z + zoom * Math.cos(targetX) * Math.cos(targetY);
+
+  camera.lookAt(player.position.x, player.position.y + 1.5, player.position.z);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+      <style>
+      body {
+  margin: 0;
+  overflow: hidden;
+}
+      </style>
+  </body>
+  
+</html>

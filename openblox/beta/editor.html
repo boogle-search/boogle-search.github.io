@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>OpenBlox</title>
+    <link rel="stylesheet" href="./style.css">
+
+  </head>
+    
+  <body>
+  <!-- Rendering parent -->
+<div id="canvas"></div>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'></script>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/ejs@3.1.8/ejs.min.js'></script>
+<script src='https://jsdelivr.netthree@0.126.1/examples/js/controls/OrbitControls.js'></script><script  src="./script.js"></script>
+     
+     <script> 
+    /////////////////////////////////////// 
+    // 1. Initialization & Variables ////// 
+    let targetX = 0, targetY = 0, zoom = 8; 
+    let activeShapeType = 'box', activeColorHex = 0xff0000;
+    const shapesList = ['box', 'sphere', 'cylinder'];
+    const colorsList = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00];
+
+    const keys = { w: false, a: false, s: false, d: false, space: false }; 
+    window.addEventListener('keydown', e => { 
+        if (e.key === ' ') keys.space = true; 
+        else if (e.key.toLowerCase() === 'q') toggleNextShape();
+        else if (e.key.toLowerCase() === 'e') toggleNextColor();
+        else keys[e.key.toLowerCase()] = true; 
+    }); 
+    window.addEventListener('keyup', e => { if (e.key === ' ') keys.space = false; else keys[e.key.toLowerCase()] = false; }); 
+    
+    // --- CUSTOM ROBLOX CURSOR --- 
+    const fakeCursor = document.createElement('div'); 
+    fakeCursor.style.cssText = 'position:fixed; width:18px; height:18px; background:white; border:2px solid black; pointer-events:none; z-index:99999;';
+    document.body.appendChild(fakeCursor); 
+    
+    const cursorStyle = document.createElement('style'); 
+    cursorStyle.innerHTML = 'body, #canvas { cursor: none !important; }'; 
+    document.head.appendChild(cursorStyle); 
+    
+    let isRightClicking = false; 
+    window.addEventListener('mousedown', e => { if (e.button === 2) isRightClicking = true; }); 
+    window.addEventListener('mouseup', e => { if (e.button === 2) isRightClicking = false; }); 
+    
+    window.addEventListener('mousemove', e => { 
+        if (!isRightClicking) { fakeCursor.style.left = e.clientX + 'px'; fakeCursor.style.top = e.clientY + 'px'; } 
+        else { targetX += e.movementX * 0.005; targetY += e.movementY * 0.005; if (targetY < -1.4) targetY = -1.4; if (targetY > 1.4) targetY = 1.4; } 
+    }); 
+    
+    window.addEventListener('wheel', e => { zoom += e.deltaY * 0.02; if (zoom < 3) zoom = 3; if (zoom > 40) zoom = 40; }); 
+    window.addEventListener('contextmenu', e => e.preventDefault()); 
+    
+    var world = new CANNON.World(); world.gravity.set(0, -18, 0); var fixedTimeStep = 1.0 / 60.0; 
+    const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); 
+    const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.setClearColor(0xffffff); 
+    document.getElementById("canvas").appendChild(renderer.domElement); 
+
+    const raycaster = new THREE.Raycaster(), mouseVector = new THREE.Vector2();
+    let previewGuideMesh;
+
+    /////////////////////////////////////// 
+    // CENTRALIZED ENTITY SPANNER SYSTEM // 
+    /////////////////////////////////////// 
+    const gameEntities = {}, buildableTargetsArray = []; 
+    let entityIdCounter = 0, playerIdCounter = 0; 
+
+    function spawnEntity(type = 'box', config = {}) {
+        const id = "ent_" + (entityIdCounter++);
+        const x = config.x || 0, y = config.y || 10, z = config.z || 0, color = config.color || 0xff0000;
+        const hasPhysics = config.hasPhysics !== undefined ? config.hasPhysics : true;
+        let geometry, shape, w = config.w || 2, h = config.h || 2, d = config.d || 2, radius = config.radius || 1; 
+
+        if (type === 'sphere') { geometry = new THREE.SphereGeometry(radius, 24, 24); shape = new CANNON.Sphere(radius); } 
+        else if (type === 'cylinder') { geometry = new THREE.CylinderGeometry(1, 1, h, 16); shape = new CANNON.Cylinder(1, 1, h, 16); } 
+        else { geometry = new THREE.BoxGeometry(w, h, d); shape = new CANNON.Box(new CANNON.Vec3(w / 2, h / 2, d / 2)); }
+
+        const material = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.15, roughness: 0.6 });
+        const mesh = new THREE.Mesh(geometry, material); mesh.position.set(x, y, z); scene.add(mesh);
+
+        let body = null;
+        if (hasPhysics) { body = new CANNON.Body({ mass: config.mass || 0, position: new CANNON.Vec3(x, y, z), shape: shape }); world.addBody(body); }
+        gameEntities[id] = { id, type, mesh, body, material, size: { w, h, d, radius }, hasPhysics };
+        buildableTargetsArray.push(mesh); 
+        return id; 
+    }
+
+    function spawnPlayerInstance(x, y, z, customColors = {}) {
+        const pId = "player_clone_" + (playerIdCounter++); const cloneGroup = new THREE.Group();
+        const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffd800, emissive: 0xffd800, emissiveIntensity: 0.25, roughness: 0.6 });
+        const blueMat = new THREE.MeshStandardMaterial({ color: customColors.torsoColor || 0x0054a6, emissive: customColors.torsoColor || 0x0054a6, emissiveIntensity: 0.25, roughness: 0.6 });
+        const greenMat = new THREE.MeshStandardMaterial({ color: 0x4cb13c, emissive: 0x4cb13c, emissiveIntensity: 0.25, roughness: 0.6 });
+
+        const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), greenMat); leftLeg.position.set(-0.5, 1.0, 0); cloneGroup.add(leftLeg);
+        const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), greenMat); rightLeg.position.set(0.5, 1.0, 0); cloneGroup.add(rightLeg);
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 1), blueMat); torso.position.y = 3.0; cloneGroup.add(torso);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), yellowMat); head.position.y = 4.6; cloneGroup.add(head);
+        const leftArm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), yellowMat); leftArm.position.set(-1.5, 3.0, 0); cloneGroup.add(leftArm);
+        const rightArm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), yellowMat); rightArm.position.set(1.5, 3.0, 0); cloneGroup.add(rightArm);
+
+        cloneGroup.scale.set(0.75, 0.75, 0.75); cloneGroup.position.set(x, y, z); scene.add(cloneGroup);
+        return pId;
+    }
+
+    /////////////////////////////////////// 
+    // 2. Objects & Lights //////////////// 
+    let ground, player, sphereBody, groundBody; 
+    let playerRotationY = 0, targetRotationY = 0, playerVelocityY = 0, isGrounded = true; 
+    
+    function setupScene() { 
+        ground = new THREE.Mesh(new THREE.BoxGeometry(40, 1, 40), new THREE.MeshPhysicalMaterial({ color: 0x00ff00 })); ground.name = "ground"; scene.add(ground); 
+        scene.add(new THREE.AmbientLight(0x404040, 0.5)); const dLight = new THREE.DirectionalLight(0xffffff, 0.8); dLight.position.set(5, 10, 7); scene.add(dLight); 
+        
+        player = new THREE.Group(); 
+        const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffd800, emissive: 0xffd800, emissiveIntensity: 0.25, roughness: 0.6 }); 
+        const blueMat = new THREE.MeshStandardMaterial({ color: 0x0054a6, emissive: 0x0054a6, emissiveIntensity: 0.25, roughness: 0.6 }); 
+        const greenMat = new THREE.MeshStandardMaterial({ color: 0x4cb13c, emissive: 0x4cb13c, emissiveIntensity: 0.25, roughness: 0.6 }); 
+        
+        const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), greenMat); leftLeg.position.set(-0.5, 1.0, 0); player.add(leftLeg); 
+        const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), greenMat); rightLeg.position.set(0.5, 1.0, 0); player.add(rightLeg); 
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 1), blueMat); torso.position.y = 3.0; player.add(torso); 
+        const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), yellowMat); head.position.y = 4.6; player.add(head); 
+        const leftArm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), yellowMat); leftArm.position.set(-1.5, 3.0, 0); player.add(leftArm); 
+        const rightArm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), yellowMat); rightArm.position.set(1.5, 3.0, 0); player.add(rightArm); 
+        player.scale.set(0.75, 0.75, 0.75); player.position.set(3, 0.5, 0); scene.add(player); 
+        
+        groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(20, 0.5, 20)) }); world.addBody(groundBody); 
+        window.mainPhysicsBallId = spawnEntity('sphere', { x: 0, y: 15, z: 0, color: 0x00a2ff, radius: 1, mass: 5 }); sphereBody = gameEntities[window.mainPhysicsBallId].body;
+
+        updatePreviewGuideGeometry();
+    } 
+    
+    function checkPlayerBlockCollisions(nextX, nextZ) {
+        const pRadius = 0.8; 
+        for (let id in gameEntities) {
+            const ent = gameEntities[id]; if (!ent.hasPhysics || ent.type !== 'box') continue;
+            const collisionX = nextX + pRadius > ent.mesh.position.x - (ent.size.w/2) && nextX - pRadius < ent.mesh.position.x + (ent.size.w/2);
+            const collisionZ = nextZ + pRadius > ent.mesh.position.z - (ent.size.d/2) && nextZ - pRadius < ent.mesh.position.z + (ent.size.d/2);
+            const collisionY = player.position.y < (ent.mesh.position.y + ent.size.h/2) - 0.1 && player.position.y + 3 > ent.mesh.position.y - ent.size.h/2;
+            if (collisionX && collisionZ && collisionY) return true; 
+        }
+        return false;
+    }
+
+    window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'p') spawnPlayerInstance(player.position.x, player.position.y, player.position.z, { torsoColor: 0xff0000 }); });
+
+    // --- LEFT CLICK PLACE ---
+    window.addEventListener('mousedown', e => {
+        if (e.clientY < 80) return;
+        if (e.button === 0) { 
+            mouseVector.x = (e.clientX / window.innerWidth) * 2 - 1; mouseVector.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouseVector, camera);
+            const intersections = raycaster.intersectObjects([ground, ...buildableTargetsArray]);
+            if (intersections.length > 0) {
+                const hit = intersections[0]; let sX, sY, sZ;
+                if (hit.object.name === "ground") { sX = Math.round(hit.point.x / 2) * 2; sZ = Math.round(hit.point.z / 2) * 2; sY = activeShapeType === 'sphere' ? 1 : 1.5; } 
+                else {
+                    const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+                    sX = Math.round((hit.object.position.x + normal.x * 2) / 2) * 2; sY = Math.round((hit.object.position.y + normal.y * 2) / 2) * 2; sZ = Math.round((hit.object.position.z + normal.z * 2) / 2) * 2;
+                }
+                spawnEntity(activeShapeType, { x: sX, y: sY, z: sZ, color: activeColorHex, mass: 0 });
+            }
+        }
+    });
+
+    function updatePreviewGuideGeometry() {
+        if (previewGuideMesh) scene.remove(previewGuideMesh);
+        let geo = activeShapeType === 'sphere' ? new THREE.SphereGeometry(1.02, 16, 16) : (activeShapeType === 'cylinder' ? new THREE.CylinderGeometry(1.02, 1.02, 2.02, 12) : new THREE.BoxGeometry(2.02, 2.02, 2.02));
+        previewGuideMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: activeColorHex, wireframe: true, transparent: true, opacity: 0.6 }));
+        scene.add(previewGuideMesh);
+    }
+    function toggleNextShape() { activeShapeType = shapesList[(shapesList.indexOf(activeShapeType) + 1) % shapesList.length]; updatePreviewGuideGeometry(); document.getElementById('hud-shape-txt').innerText = activeShapeType.toUpperCase(); }
+    function toggleNextColor() { activeColorHex = colorsList[(colorsList.indexOf(activeColorHex) + 1) % colorsList.length]; updatePreviewGuideGeometry(); document.getElementById('hud-color-dot').style.background = '#' + activeColorHex.toString(16).padStart(6, '0'); }
+
+    setupScene(); 
+
+    // --- PURE JAVASCRIPT HUD ---
+    (function injectHUD() {
+        const hud = document.createElement('div'); hud.style.cssText = 'position:absolute; top:20px; left:50%; transform:translateX(-50%); background:rgba(20,20,20,0.85); padding:10px 20px; border-radius:6px; border-bottom:4px solid #FF0000; display:flex; align-items:center; gap:20px; z-index:100; color:white; font-family:Arial; font-size:12px; box-shadow:0 4px 15px rgba(0,0,0,0.5);';
+        hud.innerHTML = '<div><strong>SHAPE [Q]:</strong> <span id="hud-shape-txt" style="color:#FF0000; font-weight:bold;">BOX</span></div><div style="display:flex;align-items:center;gap:6px;"><strong>COLOR [E]:</strong> <div id="hud-color-dot" style="width:14px;height:14px;border-radius:50%;background:#FF0000;border:1px solid white;"></div></div>';
+        
+        const btn = document.createElement('button'); btn.innerText = '💾 EXPORT JSON'; btn.style.cssText = 'background:#FF0000; color:white; border:none; padding:6px 12px; font-weight:bold; border-radius:4px; cursor:pointer;';
+        btn.onclick = () => {
+            const data = []; for (let id in gameEntities) { const ent = gameEntities[id]; data.push({ type: ent.type, x: ent.mesh.position.x, y: ent.mesh.position.y, z: ent.mesh.position.z, color: ent.material.color.getHex() }); }
+            navigator.clipboard.writeText(JSON.stringify(data)); alert("Map JSON string copied to clipboard! 📂");
+        };
+        hud.appendChild(btn); document.body.appendChild(hud);
+    })();
+
+    /////////////////////////////////////// 
+    // 3. The Engine Loop ///////////////// 
+    function animate() { 
+        requestAnimationFrame(animate); world.step(fixedTimeStep); 
+        for (let id in gameEntities) { const ent = gameEntities[id]; if (ent.body) { ent.mesh.position.copy(ent.body.position); ent.mesh.quaternion.copy(ent.body.quaternion); } }
+
+        // --- REAL-TIME WIREFRAME GUIDE ---
+        mouseVector.x = (parseFloat(fakeCursor.style.left) / window.innerWidth) * 2 - 1; mouseVector.y = -(parseFloat(fakeCursor.style.top) / window.innerHeight) * 2 + 1;
+        if (!isNaN(mouseVector.x) && !isNaN(mouseVector.y) && parseFloat(fakeCursor.style.top) > 80) {
+            raycaster.setFromCamera(mouseVector, camera); const intersections = raycaster.intersectObjects([ground, ...buildableTargetsArray]);
+            if (intersections.length > 0) {
+                const hit = intersections[0]; previewGuideMesh.visible = true;
+                if (hit.object.name === "ground") { previewGuideMesh.position.set(Math.round(hit.point.x/2)*2, activeShapeType==='cylinder'?1.5:(activeShapeType==='sphere'?1:1.5), Math.round(hit.point.z/2)*2); } 
+                else { const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld); previewGuideMesh.position.set(Math.round((hit.object.position.x + normal.x * 2)/2)*2, Math.round((hit.object.position.y + normal.y * 2)/2)*2, Math.round((hit.object.position.z + normal.z * 2)/2)*2); }
+            } else { previewGuideMesh.visible = false; }
+        } else { if (previewGuideMesh) previewGuideMesh.visible = false; }
+
+        // --- WASD MOVEMENT --- 
+        const moveSpeed = 0.15; let moveX = 0, moveZ = 0; 
+        if (keys.w) { moveX -= Math.sin(targetX); moveZ -= Math.cos(targetX); } if (keys.s) { moveX += Math.sin(targetX); moveZ += Math.cos(targetX); } 
+        if (keys.a) { moveX -= Math.cos(targetX); moveZ += Math.sin(targetX); } if (keys.d) { moveX += Math.cos(targetX); moveZ -= Math.sin(targetX); } 
+        let moveLen = Math.sqrt(moveX * moveX + moveZ * moveZ); 
+        if (moveLen > 0) { 
+            let nextX = player.position.x + (moveX / moveLen) * moveSpeed, nextZ = player.position.z + (moveZ / moveLen) * moveSpeed;
+            if (!checkPlayerBlockCollisions(nextX, nextZ)) { player.position.x = nextX; player.position.z = nextZ; }
+            targetRotationY = Math.atan2(moveX, moveZ); playerRotationY += (Math.atan2(Math.sin(targetRotationY - playerRotationY), Math.cos(targetRotationY - playerRotationY))) * 0.15; player.rotation.y = playerRotationY; 
+        } 
+        
+        // --- GRAVITY & SURFACE DETECTOR --- 
+        let currentGroundLevel = 0.5; 
+        for (let id in gameEntities) {
+            const ent = gameEntities[id]; if (!ent.hasPhysics || ent.type !== 'box') continue;
+            const insideX = player.position.x + 0.5 > ent.mesh.position.x - ent.size.w/2 && player.position.x - 0.5 < ent.mesh.position.x + ent.size.w/2;
+            const insideZ = player.position.z + 0.5 > ent.mesh.position.z - ent.size.d/2 && player.position.z - 0.5 < ent.mesh.position.z + ent.size.d/2;
+            if (insideX && insideZ && player.position.y >= (ent.mesh.position.y + ent.size.h/2) - 0.2 && player.position.y <= (ent.mesh.position.y + ent.size.h/2) + 0.4) { currentGroundLevel = ent.mesh.position.y + ent.size.h/2; break; }
+        }
+        const isOnPlatform = player.position.x >= -20 && player.position.x <= 20 && player.position.z >= -20 && player.position.z <= 20; 
+        if (isOnPlatform && player.position.y <= currentGroundLevel && playerVelocityY <= 0) { player.position.y = currentGroundLevel; playerVelocityY = 0; isGrounded = true; } else { isGrounded = false; } 
+        if (keys.space && isGrounded) { playerVelocityY = 0.35; isGrounded = false; } 
+        if (!isGrounded) { playerVelocityY -= 0.018; player.position.y += playerVelocityY; } 
+        
+        if (player.position.y < -20) { player.position.set(0, 5.0, 0); playerVelocityY = 0; } 
+        if (sphereBody && sphereBody.position.y < -20) { sphereBody.position.set(0, 15, 0); sphereBody.velocity.set(0, 0, 0); sphereBody.angularVelocity.set(0, 0, 0); } 
+        
+        let dx = sphereBody.position.x - player.position.x, dz = sphereBody.position.z - player.position.z; let distance = Math.sqrt(dx * dx + dz * dz); 
+        if (distance < 1.5 && Math.abs(sphereBody.position.y - (player.position.y + 1.5)) < 2.0) { let pushForce = 14; sphereBody.velocity.x = (dx / distance) * pushForce; sphereBody.velocity.z = (dz / distance) * pushForce; } 
+        
+        camera.position.x = player.position.x + zoom * Math.sin(targetX) * Math.cos(targetY); camera.position.y = player.position.y + 1.5 + zoom * Math.sin(targetY); camera.position.z = player.position.z + zoom * Math.cos(targetX) * Math.cos(targetY); 
+        camera.lookAt(player.position.x, player.position.y + 1.5, player.position.z); renderer.render(scene, camera); 
+    } 
+    animate(); 
+    window.addEventListener("resize", () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }); 
+    </script> 
+      <style>
+      body {
+  margin: 0;
+  overflow: hidden;
+}
+      </style>
+  </body>
+  
+</html>

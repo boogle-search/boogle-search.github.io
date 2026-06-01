@@ -6,6 +6,7 @@
 [ext_resource type="Texture2D" uid="uid://b5k4cw843uowe" path="res://LargeHandleFilledGrey.png" id="3_r3fl7"]
 [ext_resource type="Texture2D" uid="uid://dq6eg7cp212ev" path="res://SmallHandleFilledGrey.png" id="4_jka67"]
 [ext_resource type="PackedScene" uid="uid://cpc32yhrxpwuf" path="res://poolparty.gltf" id="6_i5arm"]
+[ext_resource type="Script" uid="uid://b7ccinkmdiugr" path="res://button.gd" id="6_wc5p8"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_a202f"]
 size = Vector2(100, 100)
@@ -114,6 +115,16 @@ scale = Vector2(1.5, 1.5)
 texture_normal = ExtResource("4_jka67")
 texture_pressed = ExtResource("4_jka67")
 action = "ui_accept"
+
+[node name="Button" type="Button" parent="Player/CanvasLayer" unique_id=714908417]
+offset_left = 966.0
+offset_top = 35.0
+offset_right = 1114.0
+offset_bottom = 97.0
+text = "fix camera"
+autowrap_mode = 3
+clip_text = true
+script = ExtResource("6_wc5p8")
 
 [node name="Node3D" type="Node3D" parent="Player" unique_id=1038144712]
 metadata/_edit_lock_ = true

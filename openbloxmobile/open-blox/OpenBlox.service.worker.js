@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1780333292|69056115';
+const CACHE_VERSION = '1780342293|9069646499';
 /** @type {string} */
 const CACHE_PREFIX = 'OpenBlox-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
